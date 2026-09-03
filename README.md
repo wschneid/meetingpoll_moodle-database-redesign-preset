@@ -45,6 +45,7 @@ Edit the **events** field and enter one time slot per line, e.g.:
 The preset is available in German, but there is not so much to translate. The template can easily be adapted. 
 
 ## Screenshots
-
-<img style="width: 75%" alt="list view" src="/screenshots/listenansicht.png">
+<img style="width: 75%" alt="list view" src="/screenshots/eintrag hinzufügen.png">
 <img style="width: 75%" alt="list view" src="/screenshots/einzelansicht.png">
+<img style="width: 75%" alt="list view" src="/screenshots/listenansicht.png">
+
