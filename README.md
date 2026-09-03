@@ -2,9 +2,15 @@
 
 Meeting Poll is a preset for the Moodle activity database.
 
+Fork of [fdagner/meetingpoll_moodle-database-preset](https://github.com/fdagner/meetingpoll_moodle-database-preset).
+
+The functional logic—responses as JSON in a hidden text field, date list
+from a hidden drop-down menu—was developed by Florian Dagner. This fork
+updates the design and fixes a Bootstrap problem in Moodle 4.5/Bootstrap 4.
+
 ## Description
 
-Organisers propose time slots; participants answer Yes / Maybe / No.
+Organizers propose time slots; participants answer Yes / Maybe / No.
 
 The list view shows a clear matrix of all responses and highlights the best-fitting appointments.
 Supports all-day events, optional notes, and automatic validation of the time slot list.
@@ -24,9 +30,9 @@ Supports all-day events, optional notes, and automatic validation of the time sl
 
 ## Getting started
 
-Download the [release file](https://github.com/fdagner/meetingpoll_moodle-database-preset/releases). 
 Create a "Database" activity in Moodle and then upload the ZIP file.
 Edit the **events** field and enter one time slot per line, e.g.:
+- 2026-06-15T10:00-11:30
 - 2026-06-14T14:00
 - 2026-06-14T16:00
 - 2026-06-15T12:00
@@ -41,3 +47,4 @@ The preset is available in German, but there is not so much to translate. The te
 ## Screenshots
 
 <img style="width: 75%" alt="list view" src="/screenshots/listenansicht.png">
+<img style="width: 75%" alt="list view" src="/screenshots/einzelansicht.png">
