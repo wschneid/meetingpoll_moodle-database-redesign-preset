@@ -27,6 +27,15 @@ Supports all-day events, optional notes, and automatic validation of the time sl
 - **Edit support** – existing answers are restored when editing an entry
 - Validation & warnings for invalid or duplicate slots
 
+## New 
+* Cards with a navy header for the entry form, single-item view, and search.
+* Appointments displayed as classic calendar pages, with weekends highlighted.
+* Replies displayed as pills that retain their color in both states.
+* Matrix with a light, two-level header instead of a solid color background;
+  column order: Participant → Appointments → Note → Actions.
+* Open appointments as filled gray dots instead of barely visible outlines.
+* Time ranges (`10:00-11:30`); the iCal export includes the end time.
+* Progress indicator.
 
 ## Getting started
 
