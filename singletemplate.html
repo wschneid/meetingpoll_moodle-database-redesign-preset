@@ -1,14 +1,36 @@
-<div class="tf-single mb-3">
-<h5 class="mb-2">Rückmeldung von ##user##</h5>
-<div id="tf-single-json" class="d-none">[[json]]</div>
-<div id="tf-single-table" class="table-responsive"></div>
-</div>
+<div class="tf-app tf-single">
+  <div class="tf-panel">
+    <div class="tf-panel__bar">R&uuml;ckmeldung</div>
+    <div class="tf-panel__body">
 
-<div class=" added_field">
-    <div class="mt-4">
-        <span class="fw-bold">[[note#description]]</span>
-        <p class="mt-2">[[note]]</p>
+      <div class="tf-panel__head">
+        <div>
+          <p class="tf-card-title">##user##</p>
+          <p class="tf-subtitle">Angaben zu allen vorgeschlagenen Terminen.</p>
+        </div>
+        <div class="tf-progress" id="tf-single-progress" hidden>
+          <span class="tf-progress__label"><span id="tf-single-yes">0</span> von <span id="tf-single-total">0</span> Terminen m&ouml;glich</span>
+          <div class="tf-progress__track"><div class="tf-progress__bar" id="tf-single-bar"></div></div>
+        </div>
+      </div>
+
+      <div id="tf-single-json" class="tf-hidden">[[json]]</div>
+      <div id="tf-single-body"></div>
+
+      <div class="tf-legend">
+        <span class="tf-chip tf-chip--yes"><span aria-hidden="true">&#10003;</span> Kann</span>
+        <span class="tf-chip tf-chip--maybe"><span aria-hidden="true">?</span> Vielleicht</span>
+        <span class="tf-chip tf-chip--no"><span aria-hidden="true">&#10007;</span> Kann nicht</span>
+        <span class="tf-chip tf-chip--open">&ndash; offen</span>
+      </div>
+
+      <div class="tf-notefield">
+        <span class="tf-label">[[note#description]]</span>
+        <div>[[note]]</div>
+      </div>
+
     </div>
+  </div>
 </div>
 
 <script>
@@ -16,22 +38,35 @@
   'use strict';
 
   const STATUS_INFO = new Map([
-    ['yes', { symbol: '\u2713', ariaLabel: 'Kann', cls: 'bg-success text-white' }],
-    ['maybe', { symbol: '?', ariaLabel: 'Vielleicht', cls: 'bg-warning text-dark' }],
-    ['no', { symbol: '\u2717', ariaLabel: 'Kann nicht', cls: 'bg-danger text-white' }]
+    ['yes',   { symbol: '\u2713', label: 'Kann',       cls: 'yes' }],
+    ['maybe', { symbol: '?',      label: 'Vielleicht', cls: 'maybe' }],
+    ['no',    { symbol: '\u2717', label: 'Kann nicht', cls: 'no' }]
   ]);
 
   const ALL_DAY_LABEL = 'ganzt\u00e4gig';
+  const TIME_RANGE    = /^(\d{2}:\d{2})-(\d{2}:\d{2})$/;
+  const WEEKDAYS = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
+
+  // Zeitraeume werden mit Halbgeviertstrich angezeigt, Zeitpunkte unveraendert.
+  const formatTime = (time) => {
+    const parts = TIME_RANGE.exec(time);
+    return parts ? `${parts[1]}\u2013${parts[2]}` : time;
+  };
 
   const formatDay = (isoDay) => {
-    const [year, month, day] = isoDay.split('-');
-    return `${day}.${month}.${year}`;
+    const [year, month, day] = isoDay.split('-').map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    const dd = String(day).padStart(2, '0');
+    const mm = String(month).padStart(2, '0');
+    return `${WEEKDAYS[date.getUTCDay()]}, ${dd}.${mm}.${year}`;
   };
 
   const jsonEl = document.getElementById('tf-single-json');
-  const target = document.getElementById('tf-single-table');
+  const target = document.getElementById('tf-single-body');
   if (!jsonEl || !target) return;
 
+  // .textContent, weil [[json]] von Nutzenden stammende Daten enthaelt und
+  // niemals als HTML interpretiert werden darf.
   let answers = {};
   try {
     answers = JSON.parse(jsonEl.textContent.trim() || '{}') || {};
@@ -41,23 +76,41 @@
 
   const dateList = Object.keys(answers).sort();
   if (dateList.length === 0) {
-    target.innerHTML = '<p class="text-muted">Keine Angaben vorhanden.</p>';
+    target.innerHTML = '<div class="tf-empty">Keine Angaben vorhanden.</div>';
     return;
   }
 
+  let yesCount = 0;
   const rows = dateList.map((dateTime) => {
     const [day, time] = dateTime.split('T');
-    const timeLabel = time ? time : `<span class="fst-italic">${ALL_DAY_LABEL}</span>`;
+    const timeLabel = time
+      ? `<span class="tf-single-row__time">&middot; ${formatTime(time)} Uhr</span>`
+      : `<span class="tf-single-row__time">&middot; <em>${ALL_DAY_LABEL}</em></span>`;
+
     const status = STATUS_INFO.get(answers[dateTime]);
-    const answerCell = status
-      ? `<td class="${status.cls}" title="${status.ariaLabel}" aria-label="${status.ariaLabel}">${status.symbol}</td>`
-      : '<td class="text-muted">offen</td>';
-    return `<tr><td>${formatDay(day)}</td><td>${timeLabel}</td>${answerCell}</tr>`;
+    if (answers[dateTime] === 'yes') yesCount += 1;
+
+    const chip = status
+      ? `<span class="tf-chip tf-chip--${status.cls}"><span aria-hidden="true">${status.symbol}</span> ${status.label}</span>`
+      : '<span class="tf-chip tf-chip--open">offen</span>';
+
+    return `<div class="tf-single-row">` +
+      `<span class="tf-single-row__date">${formatDay(day)}${timeLabel}</span>` +
+      chip +
+      `</div>`;
   }).join('');
 
-  target.innerHTML =
-    '<table class="table table-bordered table-sm align-middle">' +
-    '<thead><tr><th>Tag</th><th>Uhrzeit</th><th>Antwort</th></tr></thead>' +
-    `<tbody>${rows}</tbody></table>`;
+  target.innerHTML = `<div class="tf-single-list">${rows}</div>`;
+
+  const wrap  = document.getElementById('tf-single-progress');
+  const bar   = document.getElementById('tf-single-bar');
+  const yesEl = document.getElementById('tf-single-yes');
+  const total = document.getElementById('tf-single-total');
+  if (wrap && bar && yesEl && total) {
+    wrap.hidden = false;
+    yesEl.textContent = String(yesCount);
+    total.textContent = String(dateList.length);
+    bar.style.width = `${Math.round((yesCount / dateList.length) * 100)}%`;
+  }
 })();
 </script>

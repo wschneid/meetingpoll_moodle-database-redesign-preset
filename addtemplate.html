@@ -1,19 +1,33 @@
-<div class="tf-add mb-3">
+<div class="tf-app tf-add">
 
-<div id="tf-source" class="d-none">[[events]]</div>
-<div id="tf-json-source" class="d-none">[[json]]</div>
+  <div id="tf-source" class="tf-hidden">[[events]]</div>
+  <div id="tf-json-source" class="tf-hidden">[[json]]</div>
 
-<h3 class="mb-2">Termine</h3>
-<p class="text-muted small mb-3">Die Liste der Termine wird vom Organisator über das Feld „Termine" gepflegt.</p>
+  <div class="tf-panel">
+    <div class="tf-panel__bar">Terminabstimmung</div>
+    <div class="tf-panel__body">
 
-<div id="tf-add-table" class="table-responsive"></div>
+      <div class="tf-panel__head">
+        <div>
+          <p class="tf-card-title">Deine Verf&uuml;gbarkeit</p>
+          <p class="tf-subtitle">W&auml;hle f&uuml;r jeden Termin aus, ob du kannst. Ein zweiter Klick hebt die Auswahl wieder auf.</p>
+        </div>
+        <div class="tf-progress" id="tf-progress" hidden>
+          <span class="tf-progress__label"><span id="tf-progress-done">0</span> von <span id="tf-progress-total">0</span> beantwortet</span>
+          <div class="tf-progress__track"><div class="tf-progress__bar" id="tf-progress-bar"></div></div>
+        </div>
+      </div>
 
-<div class=" added_field">
-    <div class="mt-4">
-        <span class="fw-bold">[[note#description]]</span>
-        <p class="mt-2">[[note]]</p>
+      <div id="tf-add-body"></div>
+
+      <div class="tf-notefield">
+        <span class="tf-label">[[note#description]]</span>
+        [[note]]
+      </div>
+
     </div>
-</div>
+  </div>
+
 </div>
 
 <script>
@@ -21,42 +35,84 @@
   'use strict';
 
   const STATUS_OPTIONS = [
-    { key: 'yes', symbol: '\u2713', ariaLabel: 'Kann', cls: 'success' },
-    { key: 'maybe', symbol: '?', ariaLabel: 'Vielleicht', cls: 'warning' },
-    { key: 'no', symbol: '\u2717', ariaLabel: 'Kann nicht', cls: 'danger' }
+    { key: 'yes',   symbol: '\u2713', label: 'Kann',       cls: 'yes' },
+    { key: 'maybe', symbol: '?',      label: 'Vielleicht', cls: 'maybe' },
+    { key: 'no',    symbol: '\u2717', label: 'Kann nicht', cls: 'no' }
   ];
 
-  const DATE_TIME_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
-  const ALL_DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-  const ALL_DAY_LABEL = '';
+  // Drei erlaubte Formen: Zeitpunkt, Zeitraum und ganztaegig. Die Stunden- und
+  // Minutenbereiche stehen bewusst im Muster - mit \d{2} waere 25:00 gueltig.
+  const DAY   = '\\d{4}-\\d{2}-\\d{2}';
+  const CLOCK = '(?:[01]\\d|2[0-3]):[0-5]\\d';
+  const DATE_TIME_PATTERN = new RegExp(`^${DAY}T${CLOCK}$`);
+  const RANGE_PATTERN     = new RegExp(`^${DAY}T${CLOCK}-${CLOCK}$`);
+  const ALL_DAY_PATTERN   = new RegExp(`^${DAY}$`);
+  const TIME_RANGE        = /^(\d{2}:\d{2})-(\d{2}:\d{2})$/;
+  const ALL_DAY_LABEL     = 'ganzt\u00e4gig';
+  const WEEKDAYS = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+  const MONTHS   = ['Jan', 'Feb', 'M\u00e4r', 'Apr', 'Mai', 'Jun',
+                    'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
 
-  const isValidDate = (value) => DATE_TIME_PATTERN.test(value) || ALL_DAY_PATTERN.test(value);
   const isAllDay = (dateTime) => !dateTime.includes('T');
 
-  const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (ch) => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'
-  }[ch]));
-
-  const formatDay = (isoDay) => {
-    const [year, month, day] = isoDay.split('-');
-    return `${day}.${month}.${year}`;
+  // Auch der Kalendertag wird geprueft: 2026-02-30 passt zwar auf das Muster,
+  // existiert aber nicht.
+  const isRealDay = (isoDay) => {
+    const [y, m, d] = isoDay.split('-').map(Number);
+    const date = new Date(Date.UTC(y, m - 1, d));
+    return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d;
   };
 
-  const container = document.getElementById('tf-add-table');
+  const isValidDate = (value) => {
+    if (!ALL_DAY_PATTERN.test(value) && !DATE_TIME_PATTERN.test(value) &&
+        !RANGE_PATTERN.test(value)) return false;
+    if (!isRealDay(value.split('T')[0])) return false;
+    if (!RANGE_PATTERN.test(value)) return true;
+    // Bei einem Zeitraum muss das Ende nach dem Anfang liegen, sonst ist der
+    // Eintrag ein Tippfehler und keine gueltige Angabe.
+    const [start, end] = TIME_RANGE.exec(value.split('T')[1]).slice(1);
+    return end > start;
+  };
+
+  // Zeitraeume werden mit Halbgeviertstrich angezeigt, Zeitpunkte unveraendert.
+  const formatTime = (time) => {
+    const parts = TIME_RANGE.exec(time);
+    return parts ? `${parts[1]}\u2013${parts[2]}` : time;
+  };
+
+  const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (ch) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[ch]));
+
+  const dayParts = (isoDay) => {
+    const [year, month, day] = isoDay.split('-').map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    const dow = date.getUTCDay();
+    return {
+      dow: WEEKDAYS[dow],
+      num: String(day).padStart(2, '0'),
+      mon: MONTHS[month - 1],
+      year: String(year),
+      weekend: dow === 0 || dow === 6
+    };
+  };
+
+  const container    = document.getElementById('tf-add-body');
   const sourceSelect = document.querySelector('#tf-source select');
-  const jsonInput = document.querySelector('#tf-json-source input, #tf-json-source textarea');
+  const jsonInput    = document.querySelector('#tf-json-source input, #tf-json-source textarea');
 
   if (!container) return;
 
   if (!sourceSelect || !jsonInput) {
-    // Configuration problem (e.g. field renamed/removed) - fail visibly
-    // instead of leaving a blank, confusing page.
-    container.innerHTML = '<div class="alert alert-danger py-2 px-3 small mb-0">' +
-      'Terminfinder: Die erwarteten Felder wurden nicht gefunden. Bitte Preset-Konfiguration pr\u00fcfen.</div>';
+    // Konfigurationsproblem (z. B. Feld umbenannt oder geloescht) sichtbar
+    // machen, statt eine leere, verwirrende Seite zu hinterlassen.
+    container.innerHTML = '<div class="tf-alert tf-alert--danger"><span class="tf-alert__icon">\u26A0</span>' +
+      '<div><strong>Terminfinder:</strong> Die erwarteten Felder wurden nicht gefunden. ' +
+      'Bitte pr\u00fcfen, ob die Felder <code>events</code> und <code>json</code> existieren.</div></div>';
     return;
   }
 
-  // Read the configured appointment options from the hidden dropdown field.
+  // Terminliste aus dem versteckten Auswahlfeld lesen.
   const dateList = [];
   const invalidEntries = [];
   const duplicateEntries = [];
@@ -65,14 +121,8 @@
   for (const option of sourceSelect.options) {
     const value = (option.value || '').trim();
     if (!value) continue;
-    if (!isValidDate(value)) {
-      invalidEntries.push(value);
-      continue;
-    }
-    if (seen.has(value)) {
-      duplicateEntries.push(value);
-      continue;
-    }
+    if (!isValidDate(value)) { invalidEntries.push(value); continue; }
+    if (seen.has(value))     { duplicateEntries.push(value); continue; }
     seen.add(value);
     dateList.push(value);
   }
@@ -80,29 +130,34 @@
 
   let warningHtml = '';
   if (invalidEntries.length > 0 || duplicateEntries.length > 0) {
-    warningHtml += '<div class="alert alert-warning py-2 px-3 small mb-3">';
+    warningHtml += '<div class="tf-alert tf-alert--warn"><span class="tf-alert__icon">\u26A0</span><div>';
     if (invalidEntries.length > 0) {
       const items = invalidEntries.map((v) => `<code>${escapeHtml(v)}</code>`).join(', ');
-      warningHtml += `<div><strong>Achtung:</strong> ${invalidEntries.length} Eintrag/Eintr\u00e4ge im Feld ` +
-        `\u201eTermine\u201c entspricht/entsprechen nicht dem erwarteten Format <code>JJJJ-MM-TT` + `T` +
-        `HH:MM</code> (z.\u00A0B. <code>2026-06-15T12:00</code>) oder <code>JJJJ-MM-TT</code> ` +
-        `f\u00fcr einen ganzt\u00e4gigen Termin (z.\u00A0B. <code>2026-06-15</code>) und wird/werden daher nicht angezeigt: ${items}</div>`;
+      warningHtml += `<div>${invalidEntries.length} Eintrag/Eintr\u00e4ge im Feld ` +
+        `\u201eTermine\u201c entspricht/entsprechen keinem der erlaubten Formate und ` +
+        `wird/werden daher nicht angezeigt: ${items}` +
+        `<br>Erlaubt sind <code>JJJJ-MM-TT` + `T` + `HH:MM</code> f\u00fcr einen Zeitpunkt ` +
+        `(z.\u00A0B. <code>2026-06-15T12:00</code>), <code>JJJJ-MM-TT` + `T` + `HH:MM-HH:MM</code> ` +
+        `f\u00fcr einen Zeitraum (z.\u00A0B. <code>2026-06-15T10:00-11:30</code>) und ` +
+        `<code>JJJJ-MM-TT</code> f\u00fcr einen ganzt\u00e4gigen Termin. Bei einem Zeitraum ` +
+        `muss das Ende nach dem Anfang liegen.</div>`;
     }
     if (duplicateEntries.length > 0) {
       const items = duplicateEntries.map((v) => `<code>${escapeHtml(v)}</code>`).join(', ');
-      const spacingClass = invalidEntries.length > 0 ? ' class="mt-2"' : '';
-      warningHtml += `<div${spacingClass}><strong>Achtung:</strong> Folgender Termin ist im Feld ` +
-        `\u201eTermine\u201c mehrfach eingetragen und wird nur einmal angezeigt: ${items}</div>`;
+      warningHtml += `<div${invalidEntries.length > 0 ? ' style="margin-top:.5rem"' : ''}>` +
+        `Folgender Termin ist mehrfach eingetragen und wird nur einmal angezeigt: ${items}</div>`;
     }
-    warningHtml += '</div>';
+    warningHtml += '</div></div>';
   }
 
   if (dateList.length === 0) {
-    container.innerHTML = warningHtml + '<p class="text-muted">Es sind noch keine Termine hinterlegt.</p>';
+    container.innerHTML = warningHtml +
+      '<div class="tf-empty">Es sind noch keine Termine hinterlegt.<br>' +
+      'Der Organisator pflegt sie in den Optionen des Feldes \u201eevents\u201c.</div>';
     return;
   }
 
-  // Load an existing answer, e.g. when editing an entry.
+  // Vorhandene Antwort laden, z. B. beim Bearbeiten eines Eintrags.
   let existingAnswers = {};
   try {
     existingAnswers = JSON.parse(jsonInput.value || '{}') || {};
@@ -110,7 +165,17 @@
     existingAnswers = {};
   }
 
-  // Group appointments by calendar day so same-day slots share one row label.
+  // Sammel-Buttons: setzen bzw. loeschen eine ganze Statusspalte auf einmal.
+  const bulkHtml = '<div class="tf-bulk">' +
+    '<span class="tf-bulk__label">Alle Termine:</span>' +
+    STATUS_OPTIONS.map((status) =>
+      `<button type="button" class="tf-bulk__btn" data-status="${status.key}" aria-pressed="false" ` +
+      `title="Alle Termine auf \u201e${status.label}\u201c setzen bzw. wieder abw\u00e4hlen">` +
+      `<span aria-hidden="true">${status.symbol}</span> ${status.label}</button>`
+    ).join('') +
+    '</div>';
+
+  // Nach Kalendertag gruppieren, damit mehrere Slots eines Tages eine Karte teilen.
   const dayGroups = new Map();
   for (const dateTime of dateList) {
     const day = dateTime.split('T')[0];
@@ -118,80 +183,99 @@
     dayGroups.get(day).push(dateTime);
   }
 
-  const rows = [];
-  for (const day of [...dayGroups.keys()].sort()) {
-    const slots = dayGroups.get(day);
-    slots.forEach((dateTime, index) => {
-      const dayCell = index === 0
-        ? `<td rowspan="${slots.length}" class="fw-bold align-middle">${formatDay(day)}</td>`
-        : '';
-      const slotDigits = dateTime.replace(/[^0-9]/g, '');
-      const currentValue = existingAnswers[dateTime];
+  const dayCards = [...dayGroups.keys()].sort().map((day) => {
+    const parts = dayParts(day);
+    const slots = dayGroups.get(day).map((dateTime) => {
+      const slotId = dateTime.replace(/[^0-9]/g, '');
+      const current = existingAnswers[dateTime];
 
-      // Rendered as checkboxes (not radios): a checkbox's native click
-      // behaviour already toggles off when clicked again, which gives us
-      // "einzeln abwählen" for free. Exclusivity between the three status
-      // options per row is enforced manually in the change handler below.
-      const statusCells = STATUS_OPTIONS.map((status) => {
-        const inputId = `tf_${slotDigits}_${status.key}`;
-        const isChecked = currentValue === status.key ? ' checked' : '';
-        return `<td class="text-center">` +
-          `<input type="checkbox" class="btn-check tf-check" autocomplete="off" ` +
-          `style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;" ` +
-          `id="${inputId}" data-datetime="${dateTime}" data-status="${status.key}"${isChecked}>` +
-          `<label class="btn btn-outline-${status.cls} btn-sm" for="${inputId}" title="${status.ariaLabel}" aria-label="${status.ariaLabel}">${status.symbol}</label>` +
-          `</td>`;
+      const timeLabel = isAllDay(dateTime)
+        ? `<span class="tf-allday">${ALL_DAY_LABEL}</span>`
+        : `${formatTime(dateTime.split('T')[1])} Uhr`;
+
+      // Bewusst Checkboxen statt Radios: Das native Klickverhalten schaltet
+      // beim zweiten Klick wieder aus - damit ist "einzeln abwaehlen" gratis.
+      // Die Exklusivitaet je Zeile erzwingt der change-Handler weiter unten.
+      const segments = STATUS_OPTIONS.map((status) => {
+        const inputId = `tf_${slotId}_${status.key}`;
+        const checked = current === status.key ? ' checked' : '';
+        return `<input type="checkbox" class="tf-seg__input tf-check" autocomplete="off" id="${inputId}" ` +
+          `data-datetime="${dateTime}" data-status="${status.key}"${checked}>` +
+          `<label class="tf-seg__btn tf-seg__btn--${status.cls}" for="${inputId}" ` +
+          `title="${status.label}" aria-label="${status.label}">` +
+          `<span class="tf-seg__sym" aria-hidden="true">${status.symbol}</span>` +
+          `<span class="tf-seg__txt">${status.label}</span></label>`;
       }).join('');
 
-      const timeCell = isAllDay(dateTime)
-        ? `<td class="text-center fst-italic">${ALL_DAY_LABEL}</td>`
-        : `<td>${dateTime.split('T')[1]}</td>`;
+      return `<div class="tf-slot" data-datetime="${dateTime}">` +
+        `<span class="tf-slot__time">${timeLabel}</span>` +
+        `<div class="tf-seg" role="group" aria-label="Antwort f\u00fcr ${dateTime}">${segments}</div>` +
+        `</div>`;
+    }).join('');
 
-      rows.push(`<tr>${dayCell}${timeCell}${statusCells}</tr>`);
-    });
-  }
-
-  // Column header buttons let the user activate ("alle auf X setzen") or,
-  // on a second click, deactivate a whole status column at once.
-  const columnButtonsHtml = STATUS_OPTIONS.map((status) => {
-    return `<th class="text-center">` +
-      `<button type="button" class="btn btn-outline-${status.cls} btn-sm tf-col-btn" ` +
-      `data-status="${status.key}" title="Ganze Spalte \u201e${status.ariaLabel}\u201c an-/abwählen" ` +
-      `aria-pressed="false">Alle ${status.symbol}</button>` +
-      `</th>`;
+    return `<div class="tf-day${parts.weekend ? ' tf-day--weekend' : ''}">` +
+      `<div class="tf-day__date" aria-hidden="true">` +
+      `<span class="tf-day__mon">${parts.mon} ${parts.year}</span>` +
+      `<span class="tf-day__num">${parts.num}</span>` +
+      `<span class="tf-day__dow">${parts.dow}</span>` +
+      `</div>` +
+      `<div class="tf-day__slots">${slots}</div>` +
+      `</div>`;
   }).join('');
 
-  container.innerHTML = warningHtml +
-    '<p class="text-muted small mb-2">Mit den Spalten-Buttons lassen sich alle Termine auf einmal beantworten.</p>' +
-    '<table class="table table-bordered align-middle tf-add-table" style="max-width: 600px">' +
-    '<thead>' +
-    '<tr><th rowspan="2" class="align-middle">Tag</th><th rowspan="2" class="align-middle">Uhrzeit</th>' +
-    '<th colspan="3">Deine Antwort</th></tr>' +
-    `<tr>${columnButtonsHtml}</tr>` +
-    '</thead>' +
-    `<tbody>${rows.join('')}</tbody></table>`;
+  // Die Tageskarten bekommen einen eigenen Container: sonst wuerden Warnhinweis
+  // und Sammel-Buttons bei der Wechselfaerbung mitgezaehlt.
+  container.innerHTML = warningHtml + bulkHtml + `<div class="tf-days">${dayCards}</div>`;
 
-  // Cache the checkbox list once instead of re-querying the DOM on every change.
-  const checkboxes = [...document.querySelectorAll('.tf-check')];
-  const colButtons = [...document.querySelectorAll('.tf-col-btn')];
+  // Elemente einmal einsammeln statt bei jeder Aenderung neu zu suchen.
+  const checkboxes = [...container.querySelectorAll('.tf-check')];
+  const bulkButtons = [...container.querySelectorAll('.tf-bulk__btn')];
+  const labelFor = new Map(
+    checkboxes.map((cb) => [cb, container.querySelector(`label[for="${cb.id}"]`)])
+  );
+
+  const progressWrap  = document.getElementById('tf-progress');
+  const progressBar   = document.getElementById('tf-progress-bar');
+  const progressDone  = document.getElementById('tf-progress-done');
+  const progressTotal = document.getElementById('tf-progress-total');
+
+  if (progressWrap) {
+    progressWrap.hidden = false;
+    progressTotal.textContent = String(dateList.length);
+  }
+
+  // Der ausgewaehlte Zustand wird bewusst selbst als Klasse gesetzt, damit das
+  // Aussehen nicht vom jeweiligen Moodle-Theme abhaengt.
+  const syncVisuals = () => {
+    let answered = 0;
+    for (const checkbox of checkboxes) {
+      const label = labelFor.get(checkbox);
+      if (label) label.classList.toggle('is-active', checkbox.checked);
+      if (checkbox.checked) answered += 1;
+    }
+    if (progressWrap) {
+      progressDone.textContent = String(answered);
+      progressBar.style.width = dateList.length
+        ? `${Math.round((answered / dateList.length) * 100)}%`
+        : '0%';
+    }
+  };
 
   const syncAnswersToHiddenField = () => {
     const answers = {};
     for (const checkbox of checkboxes) {
-      if (checkbox.checked) {
-        answers[checkbox.dataset.datetime] = checkbox.dataset.status;
-      }
+      if (checkbox.checked) answers[checkbox.dataset.datetime] = checkbox.dataset.status;
     }
-    // Include appointments without a selection as "open" (null), so the list
-    // view always sees the full, consistent set of columns.
+    // Termine ohne Auswahl als "offen" (null) mitschreiben, damit die
+    // Listenansicht immer den vollstaendigen Spaltensatz sieht.
     for (const dateTime of dateList) {
       if (!(dateTime in answers)) answers[dateTime] = null;
     }
     jsonInput.value = JSON.stringify(answers);
   };
 
-  // Enforce "only one status per row" manually, since we no longer rely on
-  // native radio-group exclusivity.
+  // "Nur ein Status pro Zeile" manuell erzwingen, da wir nicht mehr auf die
+  // native Exklusivitaet von Radio-Gruppen setzen.
   const clearRowExcept = (dateTime, keepCheckbox) => {
     for (const checkbox of checkboxes) {
       if (checkbox !== keepCheckbox && checkbox.dataset.datetime === dateTime) {
@@ -200,50 +284,48 @@
     }
   };
 
-  const updateColumnButtonStates = () => {
-    for (const button of colButtons) {
-      const status = button.dataset.status;
-      const columnBoxes = checkboxes.filter((checkbox) => checkbox.dataset.status === status);
-      const allActive = columnBoxes.length > 0 && columnBoxes.every((checkbox) => checkbox.checked);
-      button.classList.toggle('active', allActive);
+  const updateBulkStates = () => {
+    for (const button of bulkButtons) {
+      const columnBoxes = checkboxes.filter((cb) => cb.dataset.status === button.dataset.status);
+      const allActive = columnBoxes.length > 0 && columnBoxes.every((cb) => cb.checked);
+      button.classList.toggle('is-active', allActive);
       button.setAttribute('aria-pressed', allActive ? 'true' : 'false');
     }
+  };
+
+  const refresh = () => {
+    syncAnswersToHiddenField();
+    syncVisuals();
+    updateBulkStates();
   };
 
   checkboxes.forEach((checkbox) => {
     checkbox.addEventListener('change', () => {
       if (checkbox.checked) clearRowExcept(checkbox.dataset.datetime, checkbox);
-      syncAnswersToHiddenField();
-      updateColumnButtonStates();
+      refresh();
     });
   });
 
-  colButtons.forEach((button) => {
+  bulkButtons.forEach((button) => {
     button.addEventListener('click', () => {
-      const status = button.dataset.status;
-      const columnBoxes = checkboxes.filter((checkbox) => checkbox.dataset.status === status);
-      const allActive = columnBoxes.length > 0 && columnBoxes.every((checkbox) => checkbox.checked);
-
+      const columnBoxes = checkboxes.filter((cb) => cb.dataset.status === button.dataset.status);
+      const allActive = columnBoxes.length > 0 && columnBoxes.every((cb) => cb.checked);
       if (allActive) {
-        // Second click on a fully active column: deactivate it again.
-        columnBoxes.forEach((checkbox) => { checkbox.checked = false; });
+        // Zweiter Klick auf eine vollstaendig aktive Spalte: wieder abwaehlen.
+        columnBoxes.forEach((cb) => { cb.checked = false; });
       } else {
-        // Activate the whole column, clearing any other selection per row.
-        columnBoxes.forEach((checkbox) => {
-          checkbox.checked = true;
-          clearRowExcept(checkbox.dataset.datetime, checkbox);
+        columnBoxes.forEach((cb) => {
+          cb.checked = true;
+          clearRowExcept(cb.dataset.datetime, cb);
         });
       }
-
-      syncAnswersToHiddenField();
-      updateColumnButtonStates();
+      refresh();
     });
   });
 
   const form = jsonInput.closest('form');
   if (form) form.addEventListener('submit', syncAnswersToHiddenField);
 
-  updateColumnButtonStates();
-  syncAnswersToHiddenField();
+  refresh();
 })();
 </script>

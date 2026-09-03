@@ -1,14 +1,89 @@
-.tf-best { background-color: #cfe2ff; }
-.tf-list-table th, .tf-list-table td { white-space: nowrap; }
-.tf-add-table td, .tf-add-table th { vertical-align: middle; }
-.tf-summary td { border-top: 2px solid #adb5bd; }
-.tf-actions-cell a { margin-left: .35rem; }
-.tf-actions-cell a:first-child { margin-left: 0; }
+/* ==========================================================================
+   Terminfindung - Farbschema Navy / Hellblau
+   Alle Regeln haengen an .tf-app, damit nichts ausserhalb der Aktivitaet
+   beeinflusst wird. Die Karten und die Tabelle tragen ihre eigenen hellen
+   Flaechen, damit sie in jedem Moodle-Theme identisch aussehen.
+   ========================================================================== */
 
-/* Hide the underlying checkboxes ourselves instead of relying on Bootstrap's
-   .btn-check, which some Moodle themes don't apply reliably. The visible
-   label (for="...") still toggles the checkbox as normal. */
-.tf-check {
+.tf-app {
+    /* Grundpalette */
+    --tf-navy:     #0f4c81;   /* Kopfleisten, Tabellenkopf, Buttons */
+    --tf-navy-dk:  #0a3557;   /* Hover auf Navy-Flaechen */
+    --tf-ink:      #000000;   /* Flie\00DFtext */
+    --tf-ink-soft: #444444;   /* Sekundaertext */
+    --tf-border:   #000000;   /* Aussenkanten von Karten und Tabelle */
+    /* Innenlinien der Matrix: reines Schwarz waere bei so vielen Zellen zu
+       schwer, deshalb ein abgeleiteter, deutlich sichtbarer Blauton. */
+    --tf-grid:     #9fb6cc;
+    --tf-row-a:    #eaf1f8;   /* helle Flaeche in Karten und Hinweisen */
+    --tf-row-b:    #f5f9fd;   /* Zebrastreifen der Matrix */
+    --tf-row-hi:   #dcebfa;   /* Spalte des besten Termins */
+    --tf-row-hov:  #e4f0fb;   /* Zeile unter dem Mauszeiger */
+
+    /* Tabelle - bewusst deutlich leichter als die Karten-Kopfleisten */
+    --tf-tbl-edge:    #000000;  /* Aussenkante der Tabelle */
+    --tf-tbl-line:    #dfe7f0;  /* Zeilenlinien */
+    --tf-tbl-sep:     #c8d6e5;  /* Trennung der Tagesgruppen */
+    --tf-head-a:      #dce9f6;  /* Kopfzeile Datum */
+    --tf-head-b:      #eef5fc;  /* Kopfzeile Uhrzeit und Summenzeile */
+    --tf-head-best-a: #c5dcf2;  /* dito, hervorgehobene Spalte */
+    --tf-head-best:   #d8e9fa;
+    --tf-card:     #ffffff;
+
+    /* Statusfarben - kraeftig und voll gesaettigt, damit die Pillen auch im
+       Ruhezustand klar als Ja / Vielleicht / Nein lesbar sind. */
+    /* Die Vollfarben sind so gewaehlt, dass weisse Schrift darauf den
+       WCAG-AA-Kontrast von 4.5:1 erreicht: 5.4 / 5.1 / 6.5 zu 1. Die frueheren
+       helleren Toene lagen bei 4.2 / 2.8 / 5.0 und fielen damit durch. */
+    --tf-yes:        #157a32;
+    --tf-yes-tint:   #c9ebd2;
+    --tf-yes-ink:    #0d5423;
+    --tf-maybe:      #a35c00;
+    --tf-maybe-tint: #ffe3b8;
+    --tf-maybe-ink:  #7a4900;
+    --tf-no:         #b3261e;
+    --tf-no-tint:    #fbcfcf;
+    --tf-no-ink:     #8f1d1d;
+
+    /* Fuellfarben der gewaehlten Antwort-Pille. Bewusst heller als die
+       Vollfarben oben, weil dort schwarze Schrift steht: Schwarz auf
+       #157a32 / #a35c00 / #b3261e erreicht nur 3.9 / 4.1 / 3.2 zu 1 und
+       faellt durch AA. Diese Toene kommen auf 7.6 / 10.4 / 7.8 zu 1. */
+    --tf-yes-fill:   #4caf50;
+    --tf-maybe-fill: #f5a623;
+    --tf-no-fill:    #ef7c74;
+
+    /* Noch keine Antwort. Neutrales Grau, aber genauso gefuellt wie die drei
+       Statusfarben - als Umriss war der Zustand in der Matrix kaum zu sehen.
+       Weisse Schrift darauf erreicht 5.4:1. */
+    --tf-open:       #5f6b7a;
+
+    /* Klassisches Kalenderblatt. Der rote Balken ist der einzige warme Ton im
+       Schema - er macht die Kachel als Kalender erkennbar. Wer ihn ins Navy
+       holen moechte, aendert nur --tf-cal-band. */
+    --tf-cal-band:    #c0392b;
+    --tf-cal-band-we: #8e2323;
+    --tf-cal-sheet:   #ffffff;
+    --tf-cal-ink:     #000000;
+
+    --tf-radius:    15px;
+    --tf-radius-sm: 15px;
+    --tf-radius-xs: 6px;
+    --tf-shadow:      0 1px 4px rgba(0, 0, 0, .08);
+    --tf-shadow-card: 0 1px 4px rgba(0, 0, 0, .08);
+
+    font-variant-numeric: tabular-nums;
+}
+
+.tf-app *,
+.tf-app *::before,
+.tf-app *::after { box-sizing: border-box; }
+
+.tf-hidden { display: none !important; }
+
+/* Nur fuer Screenreader - die Aktionsspalte braucht keine sichtbare
+   Ueberschrift, das Drei-Punkte-Menue erklaert sich selbst. */
+.tf-sr-only {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -20,25 +95,883 @@
     border: 0;
 }
 
-.tf-ical-btn {
-font-size: 1.2rem;
+/* ---------- Karte --------------------------------------------------------- */
+
+.tf-panel {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    margin-bottom: 1rem;
+    border: 1px solid var(--tf-border);
+    border-radius: var(--tf-radius-sm);
+    background: var(--tf-card);
+    color: var(--tf-ink);
+    box-shadow: var(--tf-shadow-card);
 }
 
-/* Notiz-Spalte: schmale Spalte mit einem Sprechblasen-Button statt direkt
-   angezeigtem Text, damit lange Notizen die Zeilen nicht in die Höhe
-   schieben. Klick öffnet die Notiz in einem Modal (funktioniert - anders
-   als ein Tooltip - auch auf Touch-/Mobilgeräten). */
-.tf-list-table td.tf-note-cell {
-    white-space: nowrap;
-    width: 1%;
+.tf-panel__bar {
+    padding: 12px 16px;
+    background: var(--tf-navy);
+    color: #fff;
+    border-bottom: 1px solid var(--tf-border);
+    font-size: 1em;
 }
 
-.tf-note-btn {
-    border-radius: 50%;
-    width: 2rem;
-    height: 2rem;
-    padding: 0;
+.tf-panel__body { flex: 1 1 auto; padding: 16px; }
+
+.tf-panel__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.tf-card-title {
+    margin: 0 0 4px;
+    font-size: 1.15em;
+    font-weight: 700;
+    color: var(--tf-ink);
+}
+
+.tf-subtitle {
+    margin: 0;
+    font-size: .92em;
+    line-height: 1.6;
+    color: var(--tf-ink-soft);
+}
+
+/* Ueberschrift der Listenansicht steht auf dem Seitenhintergrund und erbt
+   deshalb bewusst die Textfarbe des Themes. */
+.tf-list__title { margin: 0 0 .25rem; font-size: 1.25rem; font-weight: 700; }
+.tf-list__lead  { margin: 0 0 1rem; font-size: .92em; opacity: .75; }
+
+/* ---------- Fortschritt --------------------------------------------------- */
+
+.tf-progress { min-width: 170px; }
+
+.tf-progress__label {
+    display: block;
+    font-size: .8em;
+    font-weight: 600;
+    color: var(--tf-ink-soft);
+    margin-bottom: 5px;
+    text-align: right;
+}
+
+.tf-progress__track {
+    height: 7px;
+    border-radius: 999px;
+    background: var(--tf-row-b);
+    border: 1px solid var(--tf-grid);
+    overflow: hidden;
+}
+
+.tf-progress__bar {
+    height: 100%;
+    width: 0;
+    background: var(--tf-navy);
+    transition: width .25s ease;
+}
+
+/* ---------- Sammel-Buttons ------------------------------------------------ */
+
+.tf-bulk {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 12px;
+    margin-bottom: 12px;
+    border: 1px solid var(--tf-grid);
+    border-radius: var(--tf-radius-xs);
+    background: var(--tf-row-a);
+}
+
+.tf-bulk__label {
+    font-size: .84em;
+    font-weight: 700;
+    color: var(--tf-navy);
+    margin-right: 4px;
+}
+
+.tf-bulk__btn {
     display: inline-flex;
     align-items: center;
+    gap: 5px;
+    padding: 5px 12px;
+    font: inherit;
+    font-size: .84em;
+    font-weight: 600;
+    line-height: 1.4;
+    color: var(--tf-ink);
+    background: var(--tf-card);
+    border: 1px solid var(--tf-border);
+    border-radius: var(--tf-radius-xs);
+    cursor: pointer;
+    transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+}
+
+.tf-bulk__btn:hover { border-color: var(--tf-border); background: var(--tf-row-b); }
+
+.tf-bulk__btn[data-status="yes"].is-active   { background: var(--tf-yes);   border-color: var(--tf-yes);   color: #fff; }
+.tf-bulk__btn[data-status="maybe"].is-active { background: var(--tf-maybe); border-color: var(--tf-maybe); color: #fff; }
+.tf-bulk__btn[data-status="no"].is-active    { background: var(--tf-no);    border-color: var(--tf-no);    color: #fff; }
+.tf-bulk__btn.is-active { font-weight: 700; }
+
+/* ---------- Tageskarte mit Kalenderblatt ---------------------------------- */
+
+.tf-day {
+    display: flex;
+    align-items: stretch;
+    gap: 14px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    border: 1px solid var(--tf-grid);
+    border-radius: var(--tf-radius-xs);
+    background: var(--tf-card);
+}
+
+.tf-days .tf-day:nth-child(even) { background: var(--tf-row-a); }
+
+/* Klassisches Kalenderblatt: farbiger Monatsbalken oben, grosse Tageszahl auf
+   hellem Blatt, Wochentag darunter. Wochenenden bekommen einen dunkleren
+   Balken und eine rote Tageszahl. */
+.tf-day__date {
+    flex: 0 0 4.5rem;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    overflow: hidden;
+    padding: 0;
+    border: 1px solid var(--tf-grid);
+    border-radius: var(--tf-radius-xs);
+    background: var(--tf-cal-sheet);
+    color: var(--tf-cal-ink);
+    text-align: center;
+    line-height: 1.15;
+    box-shadow: 0 1px 3px rgba(26, 58, 92, .18);
+}
+
+.tf-day__mon {
+    padding: 3px 4px 4px;
+    background: var(--tf-cal-band);
+    color: #fff;
+    font-size: .66em;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+}
+
+.tf-day__num {
+    padding: 3px 4px 0;
+    font-size: 1.7em;
+    font-weight: 700;
+    letter-spacing: -.03em;
+}
+
+.tf-day__dow {
+    padding: 0 4px 5px;
+    font-size: .68em;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--tf-ink-soft);
+}
+
+.tf-day--weekend .tf-day__mon { background: var(--tf-cal-band-we); }
+.tf-day--weekend .tf-day__num,
+.tf-day--weekend .tf-day__dow { color: var(--tf-cal-band); }
+
+.tf-day__slots {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
     justify-content: center;
+    min-width: 0;
+}
+
+.tf-slot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 5px 2px;
+}
+
+.tf-day__slots .tf-slot + .tf-slot { border-top: 1px solid var(--tf-grid); }
+
+.tf-slot__time {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 700;
+    font-size: .95em;
+    color: var(--tf-navy);
+}
+
+.tf-slot__time .tf-allday {
+    font-size: .72em;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    padding: 2px 8px;
+    border: 1px solid var(--tf-grid);
+    border-radius: 999px;
+    background: var(--tf-card);
+    color: var(--tf-ink-soft);
+}
+
+/* ---------- Antwort-Pillen ------------------------------------------------ */
+
+/* Drei eigenstaendige Pillen statt eines zusammenhaengenden Blocks: jede
+   traegt schon im Ruhezustand ihre eigene Farbe. */
+.tf-seg {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.tf-seg__input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* Variante C: nicht gewaehlte Antworten stehen auf kraeftig getoentem Grund
+   mit dunkler Schrift derselben Farbfamilie, die gewaehlte springt auf
+   Vollfarbe mit weisser Schrift und Ring. Die Farbe ist damit durchgehend
+   sichtbar, ohne dass ein Zustand blass wirkt. */
+.tf-seg__btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin: 0;
+    padding: 4px 12px;
+    border: 1px solid;
+    border-radius: 999px;
+    font-size: .8em;
+    font-weight: 700;
+    line-height: 1.5;
+    cursor: pointer;
+    user-select: none;
+    transition: background-color .15s ease, color .15s ease, box-shadow .15s ease;
+}
+
+.tf-seg__sym { font-size: 1em; line-height: 1; }
+
+.tf-seg__btn { color: var(--tf-ink); }
+
+.tf-seg__btn--yes   { background: var(--tf-yes-tint);   border-color: var(--tf-yes); }
+.tf-seg__btn--maybe { background: var(--tf-maybe-tint); border-color: var(--tf-maybe); }
+.tf-seg__btn--no    { background: var(--tf-no-tint);    border-color: var(--tf-no); }
+
+.tf-seg__btn--yes:hover   { background: var(--tf-yes-fill); }
+.tf-seg__btn--maybe:hover { background: var(--tf-maybe-fill); }
+.tf-seg__btn--no:hover    { background: var(--tf-no-fill); }
+
+/* Gewaehlter Zustand: per JS gesetzte .is-active, :checked als Fallback falls
+   JavaScript ausfaellt. Der Ring in Navy ist ein zweites, farbunabhaengiges
+   Merkmal - wer Farben schlecht unterscheidet, erkennt die Auswahl trotzdem. */
+/* Der gewaehlte Zustand behaelt den 1px-Rand des Grundzustands, nur in der
+   Vollfarbe statt in der Tonung. Als farbunabhaengiges Merkmal bleibt die
+   staerkere Fettung - der Ring ist bewusst entfallen. */
+.tf-seg__btn.is-active,
+.tf-seg__input:checked + .tf-seg__btn {
+    color: var(--tf-ink);
+    font-weight: 800;
+}
+
+.tf-seg__btn--yes.is-active,
+.tf-seg__input:checked + .tf-seg__btn--yes     { background: var(--tf-yes-fill);   border-color: var(--tf-yes); }
+.tf-seg__btn--maybe.is-active,
+.tf-seg__input:checked + .tf-seg__btn--maybe   { background: var(--tf-maybe-fill); border-color: var(--tf-maybe); }
+.tf-seg__btn--no.is-active,
+.tf-seg__input:checked + .tf-seg__btn--no      { background: var(--tf-no-fill);    border-color: var(--tf-no); }
+
+/* Das echte Eingabefeld ist ausgeblendet - der Tastaturfokus muss deshalb am
+   Label sichtbar werden, sonst ist die Auswahl per Tab nicht bedienbar. */
+.tf-seg__input:focus-visible + .tf-seg__btn,
+.tf-seg__input:focus + .tf-seg__btn {
+    outline: 2px solid var(--tf-border);
+    outline-offset: 2px;
+}
+
+/* Auf schmalen Displays nur die Symbole zeigen. */
+@media (max-width: 640px) {
+    .tf-seg__txt { display: none; }
+    .tf-seg__btn { padding: 5px 11px; }
+    .tf-day { gap: 10px; padding: 9px 10px; }
+    .tf-day__date { flex-basis: 3.6rem; }
+    .tf-day__num { font-size: 1.4em; }
+}
+
+/* ---------- Notizfeld ----------------------------------------------------- */
+
+.tf-notefield {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid var(--tf-grid);
+}
+
+.tf-label {
+    display: block;
+    font-size: .84em;
+    font-weight: 700;
+    color: var(--tf-navy);
+    margin-bottom: 6px;
+}
+
+/* ---------- Hinweise ------------------------------------------------------ */
+
+.tf-alert {
+    display: flex;
+    gap: 10px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    border: 1px solid;
+    border-radius: var(--tf-radius-xs);
+    font-size: .86em;
+    line-height: 1.55;
+}
+
+.tf-alert code {
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: rgba(0, 0, 0, .07);
+    font-size: .92em;
+}
+
+.tf-alert--warn   { border-color: var(--tf-maybe); background: var(--tf-maybe-tint); color: var(--tf-ink); }
+.tf-alert--danger { border-color: var(--tf-no);    background: var(--tf-no-tint);    color: var(--tf-ink); }
+.tf-alert__icon   { flex: 0 0 auto; }
+
+.tf-empty {
+    padding: 24px 16px;
+    text-align: center;
+    border: 1px dashed var(--tf-grid);
+    border-radius: var(--tf-radius-xs);
+    background: var(--tf-row-a);
+    color: var(--tf-ink-soft);
+    font-size: .92em;
+}
+
+/* ---------- Status-Chips (Einzelansicht) ---------------------------------- */
+
+.tf-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 11px;
+    border: 1px solid;
+    border-radius: 999px;
+    font-size: .8em;
+    font-weight: 700;
+    line-height: 1.5;
+    white-space: nowrap;
+}
+
+.tf-chip--yes   { background: var(--tf-yes);   border-color: var(--tf-yes);   color: #fff; }
+.tf-chip--maybe { background: var(--tf-maybe); border-color: var(--tf-maybe); color: #fff; }
+.tf-chip--no    { background: var(--tf-no);    border-color: var(--tf-no);    color: #fff; }
+.tf-chip--open  { background: var(--tf-open); border-color: var(--tf-open); color: #fff; }
+
+/* Legendeneintrag fuer den besten Termin - neutral, damit er nicht wie ein
+   Status aussieht. */
+.tf-chip--info  { background: var(--tf-card); border-color: var(--tf-grid); color: var(--tf-ink); }
+
+.tf-single-list {
+    border: 1px solid var(--tf-grid);
+    border-radius: var(--tf-radius-xs);
+    overflow: hidden;
+}
+
+.tf-single-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 9px 14px;
+    background: var(--tf-card);
+}
+
+.tf-single-row:nth-child(even) { background: var(--tf-row-a); }
+.tf-single-row + .tf-single-row { border-top: 1px solid var(--tf-grid); }
+
+.tf-single-row__date { font-weight: 700; font-size: .9em; color: var(--tf-ink); }
+.tf-single-row__time { font-weight: 500; color: var(--tf-ink-soft); margin-left: 5px; }
+
+.tf-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 12px;
+}
+
+/* ---------- Bester Termin (Hero) ------------------------------------------ */
+
+.tf-hero {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 16px;
+    margin-bottom: 1rem;
+    border: 1px solid var(--tf-border);
+    border-left: 6px solid var(--tf-navy);
+    border-radius: var(--tf-radius-sm);
+    background: var(--tf-row-a);
+    color: var(--tf-ink);
+    box-shadow: var(--tf-shadow);
+}
+
+.tf-hero__star {
+    flex: 0 0 auto;
+    width: 2.4rem;
+    height: 2.4rem;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--tf-navy);
+    color: #fff;
+    font-size: 1.1em;
+}
+
+.tf-hero__body { flex: 1 1 12rem; min-width: 0; }
+.tf-hero__dates { font-size: 1.05em; font-weight: 700; color: var(--tf-ink); }
+.tf-hero__meta { font-size: .84em; color: var(--tf-ink-soft); margin-top: 2px; }
+
+/* ---------- Matrix-Tabelle ------------------------------------------------ */
+
+/* Zwei verschachtelte Container: aussen wird gerundet und beschnitten, innen
+   gescrollt. Ein einzelner Container kann beides nicht zuverlaessig - sobald
+   die :has()-Regel weiter unten `overflow: visible` setzt, um das
+   Aktionsmenue nicht abzuschneiden, waere die Rundung sonst weg. */
+.tf-tablecard {
+    overflow: hidden;
+    border: 1px solid var(--tf-tbl-edge);
+    border-radius: var(--tf-radius);
+    background: var(--tf-card);
+    box-shadow: var(--tf-shadow);
+    margin-bottom: 1rem;
+}
+
+.tf-scroll {
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.tf-scroll:has(.dropdown-menu.show),
+.tf-scroll:has([aria-expanded="true"]) { overflow: visible; }
+
+.tf-matrix caption { padding: 0; }
+
+.tf-matrix {
+    width: 100%;
+    margin: 0;
+    border-collapse: collapse;
+    color: var(--tf-ink);
+}
+
+.tf-matrix th,
+.tf-matrix td {
+    padding: 8px 14px;
+    white-space: nowrap;
+    vertical-align: middle;
+    border: 0;
+    border-bottom: 1px solid var(--tf-tbl-line);
+}
+
+/* Heller Kopf statt durchgehender Farbfläche */
+.tf-matrix thead th {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    color: var(--tf-ink);
+    font-weight: 600;
+    text-align: center;
+}
+
+.tf-matrix thead tr:first-child th {
+    padding-top: 11px;
+    background: var(--tf-head-a);
+    font-size: .74em;
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+}
+
+.tf-matrix thead tr:last-child th {
+    padding-bottom: 9px;
+    background: var(--tf-head-b);
+    font-size: .82em;
+    border-bottom: 2px solid var(--tf-navy);
+}
+
+/* Tagesgruppen dezent trennen. */
+.tf-matrix th.tf-col-day,
+.tf-matrix td.tf-col-day { border-left: 1px solid var(--tf-tbl-sep); }
+
+.tf-matrix tbody td,
+.tf-matrix tbody th { font-size: .86em; background: var(--tf-card); }
+
+/* Der Name steht als <th scope="row"> in der Zeile - optisch soll er sich
+   aber nicht vom Rest der Zeile abheben. */
+.tf-matrix tbody th { font-weight: 600; text-align: left; }
+
+/* Sehr leichte Zebrastreifen  */
+.tf-matrix tbody tr:nth-child(even) td,
+.tf-matrix tbody tr:nth-child(even) th { background: var(--tf-row-b); }
+
+/* Hervorgehobene Spalte */
+.tf-matrix tbody tr td.tf-best { background: var(--tf-row-hi); }
+
+.tf-matrix tbody tr:hover td,
+.tf-matrix tbody tr:hover th,
+.tf-matrix tbody tr:hover td.tf-best { background: var(--tf-row-hov); }
+
+.tf-matrix tbody tr:last-child td,
+.tf-matrix tbody tr:last-child th { border-bottom: 0; }
+
+.tf-matrix .tf-sticky {
+    position: sticky;
+    left: 0;
+    z-index: 4;
+    text-align: left;
+    border-right: 1px solid var(--tf-tbl-sep);
+}
+
+.tf-matrix thead th.tf-sticky { z-index: 6; }
+
+.tf-matrix thead th.tf-best { background: var(--tf-head-best); }
+.tf-matrix thead tr:first-child th.tf-best { background: var(--tf-head-best-a); }
+
+.tf-time-head { display: inline-flex; flex-direction: column; align-items: center; gap: 1px; }
+.tf-time-head__star { font-size: .7em; color: var(--tf-ink); }
+
+.tf-matrix__name {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 14rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tf-matrix__name a { color: var(--tf-ink); }
+
+.tf-avatar {
+    flex: 0 0 auto;
+    width: 1.7rem;
+    height: 1.7rem;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--tf-navy);
+    color: #fff;
+    font-size: .68em;
+    font-weight: 700;
+}
+
+/* Statuspunkte */
+.tf-dot {
+    display: inline-grid;
+    place-items: center;
+    width: 1.6rem;
+    height: 1.6rem;
+    border-radius: 50%;
+    font-size: .95em;
+    font-weight: 700;
+    line-height: 1;
+    color: #fff;
+}
+
+.tf-dot--yes   { background: var(--tf-yes); }
+.tf-dot--maybe { background: var(--tf-maybe); }
+.tf-dot--no    { background: var(--tf-no); }
+.tf-dot--open  { background: var(--tf-open); }
+
+.tf-matrix td.tf-cell { text-align: center; }
+
+/* Summenzeile: heller Abschluss  */
+.tf-matrix tfoot td,
+.tf-matrix tfoot th {
+    background: var(--tf-head-b);
+    color: var(--tf-ink);
+    font-weight: 700;
+    text-align: center;
+    font-size: .82em;
+    border-bottom: 0;
+    border-top: 2px solid var(--tf-navy);
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+}
+
+.tf-matrix tfoot td.tf-best { background: var(--tf-head-best); }
+.tf-matrix tfoot th.tf-sticky { z-index: 5; text-align: left; }
+
+.tf-count {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border: 0;
+    border-radius: var(--tf-radius-xs);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background-color .15s ease;
+}
+
+.tf-count:hover { background: var(--tf-row-hov); }
+
+.tf-count__bar {
+    width: 2.6rem;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--tf-tbl-line);
+    overflow: hidden;
+}
+
+.tf-count__fill { display: block; height: 100%; background: var(--tf-ink); border-radius: 999px; }
+
+/* Notiz und Aktionen sind zwei Spalten. */
+.tf-matrix .tf-col-narrow {
+    width: 1%;
+    text-align: center;
+}
+
+.tf-matrix .tf-actions-cell a { margin: 0 3px; }
+
+.tf-iconbtn {
+    display: inline-grid;
+    place-items: center;
+    width: 1.8rem;
+    height: 1.8rem;
+    padding: 0;
+    border: 1px solid var(--tf-tbl-line);
+    border-radius: 50%;
+    background: var(--tf-card);
+    color: var(--tf-ink);
+    cursor: pointer;
+    transition: background-color .15s ease, border-color .15s ease;
+}
+
+.tf-iconbtn:hover { border-color: var(--tf-navy); background: var(--tf-head-b); }
+
+/* ---------- Einladungskarte ----------------------------------------------- */
+
+.tf-invite {
+    margin-top: 2rem;
+    overflow: hidden;
+    border: 1px solid var(--tf-border);
+    border-left: 6px solid var(--tf-navy);
+    border-radius: var(--tf-radius-sm);
+    background: var(--tf-row-a);
+    color: var(--tf-ink);
+    box-shadow: var(--tf-shadow);
+}
+
+.tf-invite summary {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    padding: 12px 16px;
+    color: var(--tf-ink);
+    font-size: 1.05em;
+    font-weight: 700;
+    list-style: none;
+}
+
+.tf-invite summary::-webkit-details-marker { display: none; }
+.tf-invite summary::after { content: "\25BE"; margin-left: auto; color: var(--tf-navy); }
+.tf-invite[open] summary::after { content: "\25B4"; }
+
+.tf-invite__icon {
+    flex: 0 0 auto;
+    width: 2.4rem;
+    height: 2.4rem;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--tf-navy);
+    color: #fff;
+    font-size: 1.1em;
+}
+
+.tf-invite__body { padding: 0 16px 16px; }
+
+.tf-invite__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.tf-invite textarea {
+    width: 100%;
+    min-height: 9rem;
+    padding: 10px 12px;
+    border: 1px solid var(--tf-tbl-sep);
+    border-radius: var(--tf-radius-xs);
+    background: var(--tf-card);
+    color: var(--tf-ink);
+    font-family: inherit;
+    font-size: .86em;
+    line-height: 1.6;
+    resize: vertical;
+}
+
+.tf-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 20px;
+    border: 1px solid var(--tf-border);
+    border-radius: var(--tf-radius-xs);
+    background: var(--tf-card);
+    color: var(--tf-ink);
+    font: inherit;
+    font-size: .88em;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color .15s ease;
+}
+
+.tf-btn:hover { background: var(--tf-head-b); }
+
+.tf-btn--primary { background: var(--tf-navy); border-color: var(--tf-navy); color: #fff; }
+.tf-btn--primary:hover { background: var(--tf-navy-dk); border-color: var(--tf-navy-dk); }
+
+.tf-copied { font-size: .84em; font-weight: 700; color: var(--tf-yes); margin-left: 10px; }
+
+/* ---------- Modal --------------------------------------------------------- */
+/* Moodle liefert Bootstraps CSS aus, aber nicht dessen JS-Bundle - deshalb
+   ist die Modal-Mechanik hier selbst gebaut. */
+
+.tf-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1080;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+}
+
+.tf-modal.is-open { display: flex; }
+
+.tf-modal__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(26, 58, 92, .55);
+}
+
+.tf-modal__dialog {
+    position: relative;
+    width: min(30rem, 100%);
+    max-height: 90vh;
+    overflow: auto;
+    border: 1px solid var(--tf-navy);
+    border-radius: var(--tf-radius-sm);
+    background: var(--tf-card);
+    color: var(--tf-ink);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, .3);
+}
+
+.tf-modal__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 12px 16px;
+    background: var(--tf-navy);
+    color: #fff;
+    border-bottom: 1px solid var(--tf-border);
+}
+
+.tf-modal__title { margin: 0; font-size: 1em; font-weight: 700; }
+
+.tf-modal__close {
+    border: 0;
+    background: transparent;
+    color: #fff;
+    font-size: 1.3em;
+    line-height: 1;
+    cursor: pointer;
+    opacity: .85;
+    padding: 0 4px;
+}
+
+.tf-modal__close:hover { opacity: 1; }
+
+.tf-modal__body { padding: 16px; }
+
+.tf-modal__meta {
+    padding: 10px 12px;
+    margin-bottom: 14px;
+    border: 1px solid var(--tf-grid);
+    border-radius: var(--tf-radius-xs);
+    background: var(--tf-row-a);
+    color: var(--tf-ink);
+    font-size: .9em;
+}
+
+.tf-field { margin-bottom: 12px; }
+
+.tf-field label {
+    display: block;
+    font-size: .84em;
+    font-weight: 700;
+    color: var(--tf-navy);
+    margin-bottom: 5px;
+}
+
+.tf-field input {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--tf-grid);
+    border-radius: var(--tf-radius-xs);
+    background: var(--tf-card);
+    color: var(--tf-ink);
+    font: inherit;
+    font-size: .9em;
+}
+
+.tf-field input:focus { outline: 2px solid var(--tf-border); outline-offset: 1px; }
+
+.tf-modal__foot {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--tf-grid);
+    background: var(--tf-row-a);
+}
+
+/* ---------- Erweiterte Suche ---------------------------------------------- */
+
+.tf-search-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+    gap: 14px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .tf-app * { transition: none !important; }
 }

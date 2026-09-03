@@ -1,6 +1,30 @@
-<div class="tf-list-wrap">
-<h3 class="mb-2">Terminübersicht</h3>
-<p class="text-muted small">Alle bisherigen Rückmeldungen im Überblick.</p>
-<div id="tf-list-table" class="table-responsive"></div>
-<div id="tf-mail-template" class="d-none mt-3"></div>
-<div id="tf-entries" class="d-none">
+<script>
+// Einmal pro Sitzung auf 1000 Eintraege pro Seite umstellen, damit die
+// Matrix immer alle Rueckmeldungen enthaelt. Das Flag wird VOR dem Reload
+// gesetzt - sonst laeuft der Code in einer Endlosschleife.
+(() => {
+  'use strict';
+  if (typeof sessionStorage === 'undefined') return;
+  if (sessionStorage.getItem('tfPerPageReload') !== null) return;
+  const params = new URLSearchParams(location.search);
+  if (params.get('perpage') === '1000') {
+    sessionStorage.setItem('tfPerPageReload', '1');
+    return;
+  }
+  params.set('perpage', '1000');
+  sessionStorage.setItem('tfPerPageReload', '1');
+  window.location.replace(`${location.pathname}?${params}`);
+})();
+</script>
+
+<div class="tf-app tf-list">
+
+  <h3 class="tf-list__title">Termin&uuml;bersicht</h3>
+  <p class="tf-list__lead">Alle bisherigen R&uuml;ckmeldungen im &Uuml;berblick. Ein Klick auf eine Zahl in der Fu&szlig;zeile exportiert den Termin als Kalendereintrag.</p>
+
+  <div id="tf-hero"></div>
+  <div id="tf-list-table"></div>
+  <div id="tf-legend"></div>
+  <div id="tf-invite"></div>
+
+  <div id="tf-entries" class="tf-hidden">

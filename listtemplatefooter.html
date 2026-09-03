@@ -1,72 +1,88 @@
-</div><!-- /tf-entries -->
-</div><!-- /tf-list-wrap -->
+  </div><!-- /tf-entries -->
+</div><!-- /tf-app.tf-list -->
 
 <script>
 (() => {
   'use strict';
 
   const STATUS_INFO = new Map([
-    ['yes', { symbol: '\u2713', ariaLabel: 'Kann', cls: 'bg-success text-white' }],
-    ['maybe', { symbol: '?', ariaLabel: 'Vielleicht', cls: 'bg-warning text-dark' }],
-    ['no', { symbol: '\u2717', ariaLabel: 'Kann nicht', cls: 'bg-danger text-white' }]
+    ['yes',   { symbol: '\u2713', label: 'Kann',       cls: 'yes' }],
+    ['maybe', { symbol: '?',      label: 'Vielleicht', cls: 'maybe' }],
+    ['no',    { symbol: '\u2717', label: 'Kann nicht', cls: 'no' }]
   ]);
 
-  const ALL_DAY_LABEL = 'ganztg.';
+  const ALL_DAY_LABEL = 'ganzt\u00e4gig';
+  const TIME_RANGE    = /^(\d{2}:\d{2})-(\d{2}:\d{2})$/;
+  const WEEKDAYS = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+
   const isAllDay = (dateTime) => !dateTime.includes('T');
 
-  const formatDay = (isoDay) => {
-    const [year, month, day] = isoDay.split('-');
-    return `${day}.${month}.${year}`;
+  // Zeitraeume werden mit Halbgeviertstrich angezeigt, Zeitpunkte unveraendert.
+  const formatTime = (time) => {
+    const parts = TIME_RANGE.exec(time);
+    return parts ? `${parts[1]}\u2013${parts[2]}` : time;
   };
 
+  const formatDay = (isoDay) => {
+    const [year, month, day] = isoDay.split('-').map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    return `${WEEKDAYS[date.getUTCDay()]}, ${String(day).padStart(2, '0')}.${String(month).padStart(2, '0')}.${year}`;
+  };
+
+  const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (ch) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[ch]));
+
+  const initialsOf = (name) => {
+    const parts = String(name).trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return '?';
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  };
+
+  const root   = document.querySelector('.tf-app.tf-list');
   const target = document.getElementById('tf-list-table');
-  if (!target) return;
+  if (!root || !target) return;
 
-  // .textContent is used for jsonEl because [[json]] is stored, user-supplied
-  // data - it must never be interpreted as HTML. userEl and actionsEl, by
-  // contrast, come from Moodle's own ##user##/##more##/##edit##/##delete##
-  // placeholders: server-rendered, already-escaped markup (##user## includes
-  // the link to the user's profile), so both are safe to reinsert via
-  // innerHTML - and doing so is required to keep the profile link intact.
-  const entries = [...document.querySelectorAll('#tf-entries .tf-entry')].map((entryEl) => {
-    const userEl = entryEl.querySelector('.tf-user');
-    const jsonEl = entryEl.querySelector('.tf-json');
-    const noteEl = entryEl.querySelector('.tf-note');
+  // Die Elemente fuer Name und Aktionsmenue werden spaeter als echte Knoten
+  // verschoben (nicht per innerHTML kopiert). So bleiben der Profil-Link und
+  // die von Moodle registrierten Event-Handler des Aktionsmenues erhalten.
+  // [[json]] und [[note]] stammen dagegen aus Nutzereingaben: json wird nur
+  // als Text gelesen, die Notiz wird als bereits gefilterter Knoten geklont.
+  const entries = [...root.querySelectorAll('#tf-entries .tf-entry')].map((entryEl) => {
+    const userEl    = entryEl.querySelector('.tf-user');
+    const jsonEl    = entryEl.querySelector('.tf-json');
+    const noteEl    = entryEl.querySelector('.tf-note');
     const actionsEl = entryEl.querySelector('.tf-actions');
-
-    const userHtml = userEl ? userEl.innerHTML.trim() : '';
-    const jsonText = jsonEl ? jsonEl.textContent.trim() : '';
-   const noteHtml = noteEl ? noteEl.innerHTML.trim() : '';
-    const actionsHtml = actionsEl ? actionsEl.innerHTML.trim() : '';
 
     let answers = {};
     try {
-      answers = JSON.parse(jsonText) || {};
+      answers = JSON.parse(jsonEl ? jsonEl.textContent.trim() : '') || {};
     } catch (parseError) {
       answers = {};
     }
 
-    return { userHtml, noteHtml, answers, actionsHtml };
+    return {
+      userEl,
+      actionsEl,
+      noteEl,
+      userName: userEl ? userEl.textContent.trim() : '',
+      hasNote: !!(noteEl && noteEl.textContent.trim().length > 0),
+      answers
+    };
   });
 
-  // ---- E-Mail-Vorlage --------------------------------------------------
+  // ---- Einladungstext -----------------------------------------------------
   // Bewusst UNABHAENGIG von vorhandenen Eintraegen: gerade beim allerersten
-  // Aufruf (noch 0 Rueckmeldungen) wird der Einladungstext ja gebraucht, um
-  // ueberhaupt die erste Rueckmeldung zu bekommen. Nur die Tabelle weiter
-  // unten braucht mindestens 1 Eintrag, um sinnvoll zu sein.
-  // Die Links werden aus der aktuellen Seiten-URL abgeleitet, statt einen
-  // festen Wert zu hinterlegen, damit sie auf jeder Moodle-Instanz und bei
-  // jedem Datensatz automatisch stimmen. Moodle erzeugt die eigenen Links
-  // dieser Aktivität mit dem Parameter "d" (bzw. teils "id"); view.php und
-  // edit.php akzeptieren beide denselben Parameter, daher reicht es, den
-  // Dateinamen zu tauschen und alle listen-spezifischen Parameter
-  // (mode/sort/order/page ...) fuer den "Hinzufuegen"-Link zu entfernen.
-  const mailTemplateTarget = document.getElementById('tf-mail-template');
-  if (mailTemplateTarget) {
+  // Aufruf (noch 0 Rueckmeldungen) wird der Einladungstext gebraucht, um
+  // ueberhaupt die erste Rueckmeldung zu bekommen.
+  // Die Links werden aus der aktuellen Seiten-URL abgeleitet, damit sie auf
+  // jeder Moodle-Instanz und bei jedem Datensatz automatisch stimmen: Moodle
+  // erzeugt die Links dieser Aktivitaet mit dem Parameter "d" (teils "id"),
+  // und view.php wie edit.php akzeptieren denselben Parameter.
+  const inviteTarget = document.getElementById('tf-invite');
+  if (inviteTarget) {
     const overviewUrl = new URL(window.location.href);
-    // Anzeige-Modus/Sortierung sind fuer die Uebersicht selbst erwuenscht,
-    // aber nicht Teil des zu teilenden Links - der Link soll einfach auf die
-    // Listenansicht fuehren.
     const overviewLink = overviewUrl.origin + overviewUrl.pathname +
       (overviewUrl.searchParams.has('d') ? `?d=${overviewUrl.searchParams.get('d')}` :
        overviewUrl.searchParams.has('id') ? `?id=${overviewUrl.searchParams.get('id')}` :
@@ -77,47 +93,47 @@
     [...addUrl.searchParams.keys()].forEach((key) => {
       if (key !== 'd' && key !== 'id') addUrl.searchParams.delete(key);
     });
-    const addLink = addUrl.href;
 
-    const mailText = 'Hallo zusammen,\n' +
+    const mailText = 'Hallo zusammen,\n\n' +
       'bitte tragt eure Verf\u00fcgbarkeit f\u00fcr die vorgeschlagenen Termine ein:\n' +
-      addLink + '\n\n' +
+      addUrl.href + '\n\n' +
       'Die aktuelle \u00dcbersicht aller R\u00fcckmeldungen seht ihr hier:\n' +
       overviewLink + '\n\n' +
       'Danke euch!';
 
-    mailTemplateTarget.innerHTML =
-      '<div class="card"><div class="card-body">' +
-      '<h6 class="card-title mb-2"><i class="fa-regular fa-envelope me-1"></i>E-Mail-Vorlage zum Kopieren</h6>' +
-      '<textarea id="tf-mail-textarea" class="form-control mb-2" rows="7" readonly></textarea>' +
-      '<button type="button" class="btn btn-outline-secondary btn-sm" id="tf-mail-copy-btn">' +
-      '<i class="fa-regular fa-copy me-1"></i>Text kopieren</button>' +
-      '<span id="tf-mail-copy-feedback" class="text-success small ms-2 d-none">Kopiert!</span>' +
-      '</div></div>';
-    mailTemplateTarget.classList.remove('d-none');
+    inviteTarget.innerHTML =
+      '<details class="tf-invite">' +
+      '<summary><span class="tf-invite__icon" aria-hidden="true">\u2709</span>' +
+      'Einladungstext zum Kopieren</summary>' +
+      '<div class="tf-invite__body">' +
+      '<textarea id="tf-mail-textarea" readonly aria-label="Einladungstext"></textarea>' +
+      '<div class="tf-invite__actions">' +
+      '<button type="button" class="tf-btn" id="tf-mail-copy">\u29C9 Text kopieren</button>' +
+      '<span class="tf-copied" id="tf-mail-copied" hidden>Kopiert!</span>' +
+      '</div></div></details>';
 
-    // .value statt innerHTML: mailText enthaelt URL-Bestandteile aus
-    // window.location, die so oder so nicht als HTML interpretiert werden.
-    const mailTextarea = document.getElementById('tf-mail-textarea');
-    if (mailTextarea) mailTextarea.value = mailText;
+    // .value statt innerHTML: der Text enthaelt URL-Bestandteile aus
+    // window.location, die so nicht als HTML interpretiert werden koennen.
+    const textarea = document.getElementById('tf-mail-textarea');
+    if (textarea) textarea.value = mailText;
 
-    const copyBtn = document.getElementById('tf-mail-copy-btn');
-    const copyFeedback = document.getElementById('tf-mail-copy-feedback');
-    if (copyBtn && mailTextarea) {
+    const copyBtn = document.getElementById('tf-mail-copy');
+    const copied  = document.getElementById('tf-mail-copied');
+    if (copyBtn && textarea) {
       copyBtn.addEventListener('click', () => {
         const showFeedback = () => {
-          if (!copyFeedback) return;
-          copyFeedback.classList.remove('d-none');
-          window.setTimeout(() => copyFeedback.classList.add('d-none'), 2000);
+          if (!copied) return;
+          copied.hidden = false;
+          window.setTimeout(() => { copied.hidden = true; }, 2000);
         };
         if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(mailTextarea.value).then(showFeedback, () => {
-            mailTextarea.select();
+          navigator.clipboard.writeText(textarea.value).then(showFeedback, () => {
+            textarea.select();
             document.execCommand('copy');
             showFeedback();
           });
         } else {
-          mailTextarea.select();
+          textarea.select();
           document.execCommand('copy');
           showFeedback();
         }
@@ -126,21 +142,22 @@
   }
 
   if (entries.length === 0) {
-    target.innerHTML = '<p class="text-muted">Noch keine R\u00fcckmeldungen vorhanden.</p>';
+    target.innerHTML = '<div class="tf-empty">Noch keine R\u00fcckmeldungen vorhanden.<br>' +
+      'Teile den Einladungstext unten, um die erste Antwort zu bekommen.</div>';
     return;
   }
 
-  // Collect every appointment that appears in at least one entry.
+  // Alle Termine sammeln, die in mindestens einem Eintrag vorkommen.
   const dateSet = new Set();
-  entries.forEach((entry) => Object.keys(entry.answers).forEach((dateTime) => dateSet.add(dateTime)));
+  entries.forEach((entry) => Object.keys(entry.answers).forEach((dt) => dateSet.add(dt)));
   const dateList = [...dateSet].sort();
 
   if (dateList.length === 0) {
-    target.innerHTML = '<p class="text-muted">Noch keine Termine hinterlegt.</p>';
+    target.innerHTML = '<div class="tf-empty">Noch keine Termine hinterlegt.</div>';
     return;
   }
 
-  // Group by calendar day so same-day slots share one header cell.
+  // Nach Kalendertag gruppieren, damit gleiche Tage eine Kopfzelle teilen.
   const dayGroups = new Map();
   for (const dateTime of dateList) {
     const day = dateTime.split('T')[0];
@@ -149,167 +166,199 @@
   }
   const dayKeys = [...dayGroups.keys()].sort();
 
-  // Count "yes" answers per slot to highlight the best-fitting appointment(s).
-  const yesCounts = new Map(dateList.map((dateTime) => [dateTime, 0]));
+  // "Kann"-Antworten je Termin zaehlen, um den besten Termin hervorzuheben.
+  const yesCounts = new Map(dateList.map((dt) => [dt, 0]));
   entries.forEach((entry) => {
-    dateList.forEach((dateTime) => {
-      if (entry.answers[dateTime] === 'yes') {
-        yesCounts.set(dateTime, yesCounts.get(dateTime) + 1);
-      }
+    dateList.forEach((dt) => {
+      if (entry.answers[dt] === 'yes') yesCounts.set(dt, yesCounts.get(dt) + 1);
     });
   });
   const maxYesCount = Math.max(0, ...yesCounts.values());
+  const isBest = (dt) => maxYesCount > 0 && yesCounts.get(dt) === maxYesCount;
 
+  const timeLabelOf = (dt) => isAllDay(dt)
+    ? `<em>${ALL_DAY_LABEL}</em>`
+    : formatTime(dt.split('T')[1]);
+
+  // ---- Hero: bester Termin ------------------------------------------------
+  const heroTarget = document.getElementById('tf-hero');
+  if (heroTarget && maxYesCount > 0) {
+    const best = dateList.filter(isBest);
+    const labels = best.map((dt) => isAllDay(dt)
+      ? `${formatDay(dt)} (${ALL_DAY_LABEL})`
+      : `${formatDay(dt.split('T')[0])}, ${formatTime(dt.split('T')[1])} Uhr`);
+    heroTarget.innerHTML =
+      '<div class="tf-hero">' +
+      '<span class="tf-hero__star" aria-hidden="true">\u2605</span>' +
+      '<div class="tf-hero__body">' +
+      `<div class="tf-hero__dates">${escapeHtml(labels.join('  \u00b7  '))}</div>` +
+      `<div class="tf-hero__meta">${maxYesCount} von ${entries.length} ` +
+      `${entries.length === 1 ? 'R\u00fcckmeldung' : 'R\u00fcckmeldungen'} k\u00f6nnen` +
+      `${best.length > 1 ? ' \u2013 mehrere Termine gleichauf' : ''}</div>` +
+      '</div></div>';
+  }
+
+  // ---- Matrix -------------------------------------------------------------
   const headerDayCells = dayKeys.map((day) =>
-    `<th colspan="${dayGroups.get(day).length}" class="text-center">${formatDay(day)}</th>`
+    `<th scope="colgroup" class="tf-col-day" colspan="${dayGroups.get(day).length}">${formatDay(day)}</th>`
   ).join('');
 
   const headerTimeCells = dayKeys.map((day) =>
-    dayGroups.get(day).map((dateTime) => {
-      const bestCls = maxYesCount > 0 && yesCounts.get(dateTime) === maxYesCount ? ' tf-best' : '';
-      const label = isAllDay(dateTime)
-        ? `<span class="fst-italic">${ALL_DAY_LABEL}</span>`
-        : dateTime.split('T')[1];
-      return `<th class="text-center${bestCls}">${label}</th>`;
+    dayGroups.get(day).map((dt, index) => {
+      const cls = `${index === 0 ? ' tf-col-day' : ''}${isBest(dt) ? ' tf-best' : ''}`;
+      const star = isBest(dt) ? '<span class="tf-time-head__star" aria-hidden="true">\u2605</span>' : '';
+      return `<th scope="col" class="${cls.trim()}"><span class="tf-time-head">${star}${timeLabelOf(dt)}</span></th>`;
     }).join('')
   ).join('');
 
   const bodyRows = entries.map((entry, rowIndex) => {
-    const nameCell = `<td>${entry.userHtml || '\u2014'}</td>`;
-    const answerCells = dateList.map((dateTime) => {
-      const status = STATUS_INFO.get(entry.answers[dateTime]);
-      if (status) {
-        return `<td class="text-center ${status.cls}" title="${status.ariaLabel}" aria-label="${status.ariaLabel}">${status.symbol}</td>`;
-      }
-      return '<td class="text-center text-muted" title="offen">\u2013</td>';
-    }).join('');
-    const noteCell = entry.noteHtml
-      ? `<td class="tf-note-cell text-center"><button type="button" class="btn btn-outline-info btn-sm tf-note-btn" ` +
-        `data-note-index="${rowIndex}" title="Notiz anzeigen" aria-label="Notiz anzeigen">` +
-        `<i class="fa-regular fa-comment"></i></button></td>`
-      : '<td class="tf-note-cell"></td>';
-    // actionsHtml comes from Moodle itself (see comment above), not from entry text.
-    return `<tr>${nameCell}${noteCell}${answerCells}<td class="tf-actions-cell">${entry.actionsHtml}</td></tr>`;
+    const answerCells = dayKeys.map((day) =>
+      dayGroups.get(day).map((dt, index) => {
+        const status = STATUS_INFO.get(entry.answers[dt]);
+        const cls = `tf-cell${index === 0 ? ' tf-col-day' : ''}${isBest(dt) ? ' tf-best' : ''}`;
+        const inner = status
+          ? `<span class="tf-dot tf-dot--${status.cls}" title="${status.label}" aria-label="${status.label}">${status.symbol}</span>`
+          : '<span class="tf-dot tf-dot--open" title="offen" aria-label="offen">\u2013</span>';
+        return `<td class="${cls}">${inner}</td>`;
+      }).join('')
+    ).join('');
+
+    const noteCell = entry.hasNote
+      ? `<td class="tf-cell tf-col-day tf-col-narrow"><button type="button" class="tf-iconbtn tf-note-btn" ` +
+        `data-note-index="${rowIndex}" title="Notiz anzeigen" aria-label="Notiz anzeigen">\uD83D\uDCAC</button></td>`
+      : '<td class="tf-cell tf-col-day tf-col-narrow"></td>';
+
+    return `<tr>` +
+      `<th scope="row" class="tf-sticky"><span class="tf-matrix__name" data-user-index="${rowIndex}">` +
+      `<span class="tf-avatar" aria-hidden="true">${escapeHtml(initialsOf(entry.userName))}</span></span></th>` +
+      answerCells + noteCell +
+      `<td class="tf-cell tf-col-day tf-col-narrow tf-actions-cell" data-actions-index="${rowIndex}"></td>` +
+      `</tr>`;
   }).join('');
 
-  // Each count in the "Anzahl" row is a button that opens the iCal modal
-  // for that appointment, so the best-fitting slot can be exported directly.
-  const summaryCells = dateList.map((dateTime) => {
-    const isBest = maxYesCount > 0 && yesCounts.get(dateTime) === maxYesCount;
-    const bestCls = isBest ? ' tf-best' : '';
-    const count = yesCounts.get(dateTime);
-    const label = isBest ? `\u2605 ${count}` : `${count}`;
-    return `<td class="text-center fw-bold${bestCls}">` +
-      `<button type="button" class="btn btn-link btn-sm p-0 fw-bold tf-ical-btn" data-datetime="${dateTime}" ` +
-      `title="Termin als Kalendereintrag exportieren">${label}</button>` +
-      `</td>`;
-  }).join('');
+  const summaryCells = dayKeys.map((day) =>
+    dayGroups.get(day).map((dt, index) => {
+      const count = yesCounts.get(dt);
+      const best = isBest(dt);
+      const pct = entries.length ? Math.round((count / entries.length) * 100) : 0;
+      const cls = `${index === 0 ? ' tf-col-day' : ''}${best ? ' tf-best' : ''}`;
+      return `<td class="${cls.trim()}">` +
+        `<button type="button" class="tf-count${best ? ' is-best' : ''}" data-datetime="${dt}" ` +
+        `title="Termin als Kalendereintrag exportieren">` +
+        `<span>${best ? '\u2605 ' : ''}${count}</span>` +
+        `<span class="tf-count__bar"><span class="tf-count__fill" style="width:${pct}%"></span></span>` +
+        `</button></td>`;
+    }).join('')
+  ).join('');
 
   target.innerHTML =
-    '<table class="table table-bordered table-sm tf-list-table align-middle">' +
-    `<thead><tr><th>Teilnehmer/in</th><th>Notiz</th>${headerDayCells}<th>Aktion</th></tr>` +
-    `<tr><th></th><th></th>${headerTimeCells}<th></th></tr></thead>` +
-    `<tbody>${bodyRows}<tr class="tf-summary"><td class="fw-bold">Anzahl</td><td></td>${summaryCells}<td></td></tr></tbody>` +
-    '</table>';
+    '<div class="tf-tablecard"><div class="tf-scroll"><table class="tf-matrix">' +
+    '<caption class="tf-sr-only">R\u00fcckmeldungen aller Teilnehmenden zu den ' +
+    `vorgeschlagenen Terminen. ${entries.length} ` +
+    `${entries.length === 1 ? 'Eintrag' : 'Eintr\u00e4ge'}, ${dateList.length} ` +
+    `${dateList.length === 1 ? 'Termin' : 'Termine'}.</caption>` +
+    '<thead>' +
+    '<tr><th scope="col" class="tf-sticky" rowspan="2">Teilnehmer/in</th>' + headerDayCells +
+    '<th scope="col" rowspan="2" class="tf-col-day tf-col-narrow">Notiz</th>' +
+    '<th scope="col" rowspan="2" class="tf-col-day tf-col-narrow">' +
+    '<span class="tf-sr-only">Aktionen</span></th></tr>' +
+    `<tr>${headerTimeCells}</tr>` +
+    '</thead>' +
+    `<tbody>${bodyRows}</tbody>` +
+    `<tfoot><tr><th scope="row" class="tf-sticky">Kann</th>${summaryCells}<td class="tf-col-day tf-col-narrow"></td>` +
+    `<td class="tf-col-day tf-col-narrow"></td></tr></tfoot>` +
+    '</table></div></div>';
 
-  // Generic manual modal controller (Moodle ships Bootstrap's CSS but not its
-  // JS bundle, so bootstrap.Modal is not available here). Shown/hidden by
-  // toggling the same CSS classes Bootstrap itself would use (.modal.show +
-  // a backdrop). Used for both the iCal-export modal and the note modal.
-  function createModalController(modalEl) {
-    let backdropEl = null;
+  // Echte Knoten fuer Name und Aktionsmenue einhaengen (siehe Kommentar oben).
+  target.querySelectorAll('[data-user-index]').forEach((cell) => {
+    const entry = entries[Number(cell.dataset.userIndex)];
+    if (entry && entry.userEl) cell.appendChild(entry.userEl);
+  });
+  target.querySelectorAll('[data-actions-index]').forEach((cell) => {
+    const entry = entries[Number(cell.dataset.actionsIndex)];
+    if (entry && entry.actionsEl) cell.appendChild(entry.actionsEl);
+  });
 
-    function open() {
-      if (!backdropEl) {
-        backdropEl = document.createElement('div');
-        backdropEl.className = 'modal-backdrop show';
-        backdropEl.addEventListener('click', close);
-        document.body.appendChild(backdropEl);
-      }
-      modalEl.style.display = 'block';
-      modalEl.classList.add('show');
-      modalEl.removeAttribute('aria-hidden');
-      modalEl.setAttribute('aria-modal', 'true');
-      document.body.classList.add('modal-open');
-      document.addEventListener('keydown', onEscapePress);
-    }
+  // ---- Legende ------------------------------------------------------------
+  const legendTarget = document.getElementById('tf-legend');
+  if (legendTarget) {
+    legendTarget.innerHTML = '<div class="tf-legend">' +
+      '<span class="tf-chip tf-chip--yes">\u2713 Kann</span>' +
+      '<span class="tf-chip tf-chip--maybe">? Vielleicht</span>' +
+      '<span class="tf-chip tf-chip--no">\u2717 Kann nicht</span>' +
+      '<span class="tf-chip tf-chip--open">\u2013 offen</span>' +
+      '<span class="tf-chip tf-chip--info">\u2605 bester Termin</span>' +
+      '</div>';
+  }
 
-    function close() {
-      modalEl.style.display = 'none';
-      modalEl.classList.remove('show');
-      modalEl.setAttribute('aria-hidden', 'true');
-      modalEl.removeAttribute('aria-modal');
-      document.body.classList.remove('modal-open');
-      if (backdropEl) {
-        backdropEl.remove();
-        backdropEl = null;
-      }
-      document.removeEventListener('keydown', onEscapePress);
-    }
+  // ---- Eigene Modal-Steuerung ---------------------------------------------
+  // Moodle liefert zwar Bootstraps CSS, aber nicht dessen JS-Bundle aus, daher
+  // ist bootstrap.Modal hier nicht verfuegbar. Wir bauen ein schlankes Modal
+  // selbst - inklusive Fokus-Rueckgabe und Escape-Taste.
+  function createModal(html) {
+    const el = document.createElement('div');
+    el.className = 'tf-app tf-modal';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-modal', 'true');
+    el.innerHTML = '<div class="tf-modal__backdrop" data-tf-dismiss></div>' +
+      `<div class="tf-modal__dialog">${html}</div>`;
+    document.body.appendChild(el);
 
-    function onEscapePress(event) {
-      if (event.key === 'Escape') close();
-    }
+    let lastFocused = null;
 
-    modalEl.querySelectorAll('[data-tf-dismiss]').forEach((el) => {
-      el.addEventListener('click', close);
+    const close = () => {
+      el.classList.remove('is-open');
+      document.removeEventListener('keydown', onKey);
+      if (lastFocused && lastFocused.focus) lastFocused.focus();
+    };
+    const onKey = (event) => { if (event.key === 'Escape') close(); };
+    const open = () => {
+      lastFocused = document.activeElement;
+      el.classList.add('is-open');
+      document.addEventListener('keydown', onKey);
+    };
+
+    el.querySelectorAll('[data-tf-dismiss]').forEach((node) => {
+      node.addEventListener('click', close);
     });
 
-    return { open, close };
+    return { el, open, close };
   }
 
-  // ---- iCal export modal -------------------------------------------------
-  let modalEl = document.getElementById('tf-ical-modal');
-  if (!modalEl) {
-    const wrapper = document.createElement('div');
-    wrapper.innerHTML =
-      '<div class="modal" id="tf-ical-modal" tabindex="-1" aria-labelledby="tf-ical-modal-label" aria-hidden="true" style="display:none;">' +
-      '<div class="modal-dialog">' +
-      '<div class="modal-content">' +
-      '<div class="modal-header">' +
-      '<h5 class="modal-title" id="tf-ical-modal-label">Termin zum Kalender hinzuf\u00fcgen</h5>' +
-      '<button type="button" class="btn-close" data-tf-dismiss aria-label="Schlie\u00dfen"></button>' +
-      '</div>' +
-      '<div class="modal-body">' +
-      '<p class="mb-3"><strong>Datum:</strong> <span id="tf-ical-date"></span><br>' +
-      '<strong>Uhrzeit:</strong> <span id="tf-ical-time"></span></p>' +
-      '<div class="mb-3">' +
-      '<label for="tf-ical-title" class="form-label">Titel des Termins</label>' +
-      '<input type="text" class="form-control" id="tf-ical-title" placeholder="z.\u00A0B. Meeting">' +
-      '</div>' +
-      '<div class="mb-3" id="tf-ical-duration-group">' +
-      '<label for="tf-ical-duration" class="form-label">Dauer (Minuten)</label>' +
-      '<input type="number" class="form-control" id="tf-ical-duration" value="60" min="5" step="5">' +
-      '</div>' +
-      '<div class="mb-3">' +
-      '<label for="tf-ical-location" class="form-label">Ort</label>' +
-      '<input type="text" class="form-control" id="tf-ical-location" placeholder="z.\u00A0B. Raum 204">' +
-      '</div>' +
-      '</div>' +
-      '<div class="modal-footer">' +
-      '<button type="button" class="btn btn-secondary" data-tf-dismiss>Abbrechen</button>' +
-      '<button type="button" class="btn btn-primary" id="tf-ical-export">' +
-      '<i class="fa-regular fa-calendar-plus me-1"></i>iCal exportieren</button>' +
-      '</div></div></div></div>';
-    document.body.appendChild(wrapper.firstElementChild);
-    modalEl = document.getElementById('tf-ical-modal');
-  }
+  // ---- iCal-Export --------------------------------------------------------
+  const icalModal = createModal(
+    '<div class="tf-modal__head">' +
+    '<h5 class="tf-modal__title">Termin zum Kalender hinzuf\u00fcgen</h5>' +
+    '<button type="button" class="tf-modal__close" data-tf-dismiss aria-label="Schlie\u00dfen">\u00d7</button>' +
+    '</div>' +
+    '<div class="tf-modal__body">' +
+    '<div class="tf-modal__meta"><strong>Datum:</strong> <span id="tf-ical-date"></span><br>' +
+    '<strong>Uhrzeit:</strong> <span id="tf-ical-time"></span></div>' +
+    '<div class="tf-field"><label for="tf-ical-title">Titel des Termins</label>' +
+    '<input type="text" id="tf-ical-title" placeholder="z.\u00A0B. Projektbesprechung"></div>' +
+    '<div class="tf-field" id="tf-ical-duration-group"><label for="tf-ical-duration">Dauer (Minuten)</label>' +
+    '<input type="number" id="tf-ical-duration" value="60" min="5" step="5"></div>' +
+    '<div class="tf-field"><label for="tf-ical-location">Ort</label>' +
+    '<input type="text" id="tf-ical-location" placeholder="z.\u00A0B. Raum 204"></div>' +
+    '</div>' +
+    '<div class="tf-modal__foot">' +
+    '<button type="button" class="tf-btn" data-tf-dismiss>Abbrechen</button>' +
+    '<button type="button" class="tf-btn tf-btn--primary" id="tf-ical-export">\uD83D\uDCC5 iCal exportieren</button>' +
+    '</div>'
+  );
 
-  const icalModalCtrl = createModalController(modalEl);
-
-  const dateEl = document.getElementById('tf-ical-date');
-  const timeEl = document.getElementById('tf-ical-time');
-  const titleInput = document.getElementById('tf-ical-title');
+  const dateEl        = document.getElementById('tf-ical-date');
+  const timeEl        = document.getElementById('tf-ical-time');
+  const titleInput    = document.getElementById('tf-ical-title');
   const durationInput = document.getElementById('tf-ical-duration');
   const durationGroup = document.getElementById('tf-ical-duration-group');
   const locationInput = document.getElementById('tf-ical-location');
-  const exportBtn = document.getElementById('tf-ical-export');
+  const exportBtn     = document.getElementById('tf-ical-export');
 
   let activeDateTime = null;
 
   const pad = (n) => String(n).padStart(2, '0');
   const toIcsDate = (isoDay) => isoDay.replace(/-/g, '');
-
   const escapeIcsText = (value) => String(value)
     .replace(/\\/g, '\\\\')
     .replace(/;/g, '\\;')
@@ -323,74 +372,78 @@
     return `${date.getUTCFullYear()}${pad(date.getUTCMonth() + 1)}${pad(date.getUTCDate())}`;
   };
 
-  document.querySelectorAll('.tf-ical-btn').forEach((button) => {
+  target.querySelectorAll('.tf-count').forEach((button) => {
     button.addEventListener('click', () => {
       activeDateTime = button.dataset.datetime;
       const day = activeDateTime.split('T')[0];
-      const allDay = isAllDay(activeDateTime);
-
       dateEl.textContent = formatDay(day);
-      if (allDay) {
+      if (isAllDay(activeDateTime)) {
         timeEl.textContent = ALL_DAY_LABEL;
-        durationGroup.classList.add('d-none');
+        durationGroup.hidden = true;
       } else {
-        timeEl.textContent = `${activeDateTime.split('T')[1]} Uhr`;
-        durationGroup.classList.remove('d-none');
+        const timePart = activeDateTime.split('T')[1];
+        timeEl.textContent = `${formatTime(timePart)} Uhr`;
+        // Bei einem Zeitraum ist die Dauer bereits im Termin hinterlegt, das
+        // Eingabefeld waere dann nur verwirrend.
+        durationGroup.hidden = TIME_RANGE.test(timePart);
       }
       titleInput.value = '';
       locationInput.value = '';
-
-      icalModalCtrl.open();
+      icalModal.open();
       window.setTimeout(() => titleInput.focus(), 50);
     });
   });
 
   exportBtn.addEventListener('click', () => {
     if (!activeDateTime) return;
-    const title = titleInput.value.trim() || 'Termin';
+    const title    = titleInput.value.trim() || 'Termin';
     const location = locationInput.value.trim();
-    const day = activeDateTime.split('T')[0];
-    const allDay = isAllDay(activeDateTime);
+    const day      = activeDateTime.split('T')[0];
 
     let dtStartLine;
     let dtEndLine;
-    if (allDay) {
+
+    if (isAllDay(activeDateTime)) {
       dtStartLine = `DTSTART;VALUE=DATE:${toIcsDate(day)}`;
-      dtEndLine = `DTEND;VALUE=DATE:${addOneDay(day)}`;
+      dtEndLine   = `DTEND;VALUE=DATE:${addOneDay(day)}`;
     } else {
-      const [hh, mm] = activeDateTime.split('T')[1].split(':').map(Number);
-      const durationMinutes = Math.max(5, parseInt(durationInput.value, 10) || 60);
-      const startDate = new Date(day + 'T' + activeDateTime.split('T')[1] + ':00');
-      const endDate = new Date(startDate.getTime() + durationMinutes * 60000);
-      const endIsoDay = `${endDate.getFullYear()}-${pad(endDate.getMonth() + 1)}-${pad(endDate.getDate())}`;
+      const timePart = activeDateTime.split('T')[1];
+      const range    = TIME_RANGE.exec(timePart);
+      const startStr = range ? range[1] : timePart;
+      const [hh, mm] = startStr.split(':').map(Number);
       dtStartLine = `DTSTART:${toIcsDate(day)}T${pad(hh)}${pad(mm)}00`;
-      dtEndLine = `DTEND:${toIcsDate(endIsoDay)}T${pad(endDate.getHours())}${pad(endDate.getMinutes())}00`;
+
+      if (range) {
+        // Zeitraum: Ende steht im Termin selbst, es liegt laut Validierung
+        // immer am selben Tag.
+        const [eh, em] = range[2].split(':').map(Number);
+        dtEndLine = `DTEND:${toIcsDate(day)}T${pad(eh)}${pad(em)}00`;
+      } else {
+        const minutes = Math.max(5, parseInt(durationInput.value, 10) || 60);
+        const start   = new Date(`${day}T${startStr}:00`);
+        const end     = new Date(start.getTime() + minutes * 60000);
+        const endDay  = `${end.getFullYear()}-${pad(end.getMonth() + 1)}-${pad(end.getDate())}`;
+        dtEndLine = `DTEND:${toIcsDate(endDay)}T${pad(end.getHours())}${pad(end.getMinutes())}00`;
+      }
     }
 
     const now = new Date();
     const dtStamp = `${now.getUTCFullYear()}${pad(now.getUTCMonth() + 1)}${pad(now.getUTCDate())}` +
       `T${pad(now.getUTCHours())}${pad(now.getUTCMinutes())}${pad(now.getUTCSeconds())}Z`;
-    const uid = (window.crypto && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`) +
-      '@terminfinder';
+    const uid = (window.crypto && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`) + '@terminfinder';
 
-    const icsLines = [
-      'BEGIN:VCALENDAR',
-      'VERSION:2.0',
-      'PRODID:-//Terminfinder//DE',
-      'CALSCALE:GREGORIAN',
-      'BEGIN:VEVENT',
-      `UID:${uid}`,
-      `DTSTAMP:${dtStamp}`,
-      dtStartLine,
-      dtEndLine,
+    const lines = [
+      'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Terminfinder//DE', 'CALSCALE:GREGORIAN',
+      'BEGIN:VEVENT', `UID:${uid}`, `DTSTAMP:${dtStamp}`, dtStartLine, dtEndLine,
       `SUMMARY:${escapeIcsText(title)}`
     ];
-    if (location) icsLines.push(`LOCATION:${escapeIcsText(location)}`);
-    icsLines.push('END:VEVENT', 'END:VCALENDAR');
-    const icsContent = icsLines.join('\r\n');
+    if (location) lines.push(`LOCATION:${escapeIcsText(location)}`);
+    lines.push('END:VEVENT', 'END:VCALENDAR');
 
-    const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
+    const blob = new Blob([lines.join('\r\n')], { type: 'text/calendar;charset=utf-8' });
+    const url  = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
     link.download = `Termin_${toIcsDate(day)}.ics`;
@@ -398,41 +451,33 @@
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-
-    icalModalCtrl.close();
+    icalModal.close();
   });
 
-  // ---- Note modal ---------------------------------------------------------
-  let noteModalEl = document.getElementById('tf-note-modal');
-  if (!noteModalEl) {
-    const wrapper = document.createElement('div');
-    wrapper.innerHTML =
-      '<div class="modal" id="tf-note-modal" tabindex="-1" aria-labelledby="tf-note-modal-label" aria-hidden="true" style="display:none;">' +
-      '<div class="modal-dialog">' +
-      '<div class="modal-content">' +
-      '<div class="modal-header">' +
-      '<h5 class="modal-title" id="tf-note-modal-label"><i class="fa-regular fa-comment me-2"></i>Notiz</h5>' +
-      '<button type="button" class="btn-close" data-tf-dismiss aria-label="Schlie\u00dfen"></button>' +
-      '</div>' +
-      '<div class="modal-body">' +
-      '<p id="tf-note-modal-text" class="mb-0"></p>' +
-      '</div>' +
-      '<div class="modal-footer">' +
-      '<button type="button" class="btn btn-secondary" data-tf-dismiss>Schlie\u00dfen</button>' +
-      '</div></div></div></div>';
-    document.body.appendChild(wrapper.firstElementChild);
-    noteModalEl = document.getElementById('tf-note-modal');
-  }
+  // ---- Notiz-Modal --------------------------------------------------------
+  // Lange Notizen wuerden die Zeilen der Matrix auseinanderziehen, deshalb
+  // steht in der Tabelle nur ein Sprechblasen-Button. Ein Modal funktioniert
+  // - anders als ein Tooltip - auch auf Touch-Geraeten.
+  const noteModal = createModal(
+    '<div class="tf-modal__head">' +
+    '<h5 class="tf-modal__title">Notiz</h5>' +
+    '<button type="button" class="tf-modal__close" data-tf-dismiss aria-label="Schlie\u00dfen">\u00d7</button>' +
+    '</div>' +
+    '<div class="tf-modal__body" id="tf-note-modal-body"></div>' +
+    '<div class="tf-modal__foot">' +
+    '<button type="button" class="tf-btn" data-tf-dismiss>Schlie\u00dfen</button>' +
+    '</div>'
+  );
 
-  const noteModalCtrl = createModalController(noteModalEl);
-  const noteModalTextEl = document.getElementById('tf-note-modal-text');
+  const noteBody = document.getElementById('tf-note-modal-body');
 
-  document.querySelectorAll('.tf-note-btn').forEach((button) => {
+  target.querySelectorAll('.tf-note-btn').forEach((button) => {
     button.addEventListener('click', () => {
       const entry = entries[Number(button.dataset.noteIndex)];
-      if (!entry || !noteModalTextEl) return;
-      noteModalTextEl.innerHTML = entry.noteHtml;
-      noteModalCtrl.open();
+      if (!entry || !noteBody) return;
+      noteBody.replaceChildren();
+      if (entry.noteEl) noteBody.appendChild(entry.noteEl.cloneNode(true));
+      noteModal.open();
     });
   });
 })();
