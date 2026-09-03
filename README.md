@@ -35,6 +35,7 @@ Supports all-day events, optional notes, and automatic validation of the time sl
   column order: Participant → Appointments → Note → Actions.
 * Open appointments as filled gray dots instead of barely visible outlines.
 * Time ranges (`10:00-11:30`); the iCal export includes the end time.
+* Notes open as modals.
 * Progress indicator.
 
 ## Getting started
