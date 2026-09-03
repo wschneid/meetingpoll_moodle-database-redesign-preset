@@ -1,4 +1,4 @@
-# Meeting Poll
+# Meeting Poll Design Update
 
 Meeting Poll is a preset for the Moodle activity database.
 
